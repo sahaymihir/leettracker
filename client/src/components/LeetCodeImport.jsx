@@ -1,6 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
+
+const STORAGE_KEY = 'syncTargetGroups';
+
+function loadSavedGroupIds() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveSyncGroupIds(ids) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+}
 
 const CONSOLE_SCRIPT = `(async () => {
   console.log('LeetTracker: Fetching solved and attempted problems...');
@@ -239,6 +256,49 @@ export default function LeetCodeImport({ onSuccess, onCancel }) {
   // Instant Sync states
   const [tempUsername, setTempUsername] = useState(user?.leetcodeUsername || '');
 
+  // Group selection states
+  const [userGroups, setUserGroups] = useState([]);
+  const [groupsLoading, setGroupsLoading] = useState(true);
+  const [selectedGroupIds, setSelectedGroupIds] = useState(() => loadSavedGroupIds());
+  const [showGroupConfig, setShowGroupConfig] = useState(false);
+
+  // Fetch user's groups on mount
+  useEffect(() => {
+    api.getCached('/groups', {}, 15000)
+      .then(res => {
+        setUserGroups(res.data || []);
+        // Prune stale group IDs
+        const validIds = new Set((res.data || []).map(g => g.id));
+        setSelectedGroupIds(prev => {
+          const pruned = prev.filter(id => validIds.has(id));
+          saveSyncGroupIds(pruned);
+          return pruned;
+        });
+      })
+      .catch(() => setUserGroups([]))
+      .finally(() => setGroupsLoading(false));
+  }, []);
+
+  const toggleGroup = useCallback((groupId) => {
+    setSelectedGroupIds(prev => {
+      const next = prev.includes(groupId)
+        ? prev.filter(id => id !== groupId)
+        : [...prev, groupId];
+      saveSyncGroupIds(next);
+      return next;
+    });
+  }, []);
+
+  const toggleAllGroups = useCallback(() => {
+    setSelectedGroupIds(prev => {
+      const next = prev.length === userGroups.length
+        ? []
+        : userGroups.map(g => g.id);
+      saveSyncGroupIds(next);
+      return next;
+    });
+  }, [userGroups]);
+
   const handleCopyScript = () => {
     navigator.clipboard.writeText(CONSOLE_SCRIPT);
     setCopied(true);
@@ -263,8 +323,10 @@ export default function LeetCodeImport({ onSuccess, onCancel }) {
         updateUser({ ...user, leetcodeUsername: normalizedUsername });
       }
 
-      // 2. Trigger sync
-      const resp = await api.post('/leetcode/sync');
+      // 2. Trigger sync with groupIds
+      const resp = await api.post('/leetcode/sync', {
+        groupIds: selectedGroupIds,
+      });
       const {
         newlyImported,
         attemptedImported = 0,
@@ -275,6 +337,8 @@ export default function LeetCodeImport({ onSuccess, onCancel }) {
         recentSolvedFound = 0,
         recentAttemptedFound = 0,
         bestEffortAttempted = false,
+        groupsUpdated = 0,
+        groupsFailed = 0,
       } = resp.data;
       
       setResult({
@@ -288,6 +352,8 @@ export default function LeetCodeImport({ onSuccess, onCancel }) {
         recentSolvedFound,
         recentAttemptedFound,
         bestEffortAttempted,
+        groupsUpdated,
+        groupsFailed,
       });
       setStep(4);
       if (onSuccess) onSuccess();
@@ -337,8 +403,16 @@ export default function LeetCodeImport({ onSuccess, onCancel }) {
     }
 
     try {
-      const resp = await api.post('/leetcode/import', importPayload);
-      setResult({ ...resp.data, mode: 'advanced-import' });
+      const resp = await api.post('/leetcode/import', {
+        ...importPayload,
+        groupIds: selectedGroupIds,
+      });
+      setResult({
+        ...resp.data,
+        mode: 'advanced-import',
+        groupsUpdated: resp.data.groupsUpdated || 0,
+        groupsFailed: resp.data.groupsFailed || 0,
+      });
       setStep(4);
       if (onSuccess) onSuccess();
     } catch (err) {
@@ -347,6 +421,8 @@ export default function LeetCodeImport({ onSuccess, onCancel }) {
       setLoading(false);
     }
   };
+
+  const selectedCount = selectedGroupIds.length;
 
   return (
     <div className="text-gray-300">
@@ -369,6 +445,109 @@ export default function LeetCodeImport({ onSuccess, onCancel }) {
               {error}
             </div>
           )}
+
+          {/* ── Group Config Panel ── */}
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] overflow-hidden">
+            <button
+              onClick={() => setShowGroupConfig(!showGroupConfig)}
+              className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
+                  <svg className="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
+                  </svg>
+                </div>
+                <div className="text-left">
+                  <div className="text-sm font-semibold text-white">Auto-add to Groups</div>
+                  <div className="text-xs text-gray-500">
+                    {groupsLoading
+                      ? 'Loading groups...'
+                      : selectedCount > 0
+                        ? `${selectedCount} group${selectedCount > 1 ? 's' : ''} selected`
+                        : 'No groups selected — problems go to your tracker only'}
+                  </div>
+                </div>
+              </div>
+              <svg className={`w-5 h-5 text-gray-500 transition-transform duration-200 ${showGroupConfig ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+              </svg>
+            </button>
+
+            {showGroupConfig && (
+              <div className="border-t border-white/10 p-4 animate-fade-in">
+                {groupsLoading ? (
+                  <div className="text-center text-gray-500 text-sm py-4">Loading your groups...</div>
+                ) : userGroups.length === 0 ? (
+                  <div className="text-center py-4">
+                    <p className="text-gray-500 text-sm mb-2">You haven't joined any groups yet.</p>
+                    <a href="/groups" className="text-indigo-400 text-sm font-medium hover:text-indigo-300 transition-colors">
+                      Browse Groups &rarr;
+                    </a>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {/* Select All toggle */}
+                    <button
+                      onClick={toggleAllGroups}
+                      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors text-left"
+                    >
+                      <div className={`w-5 h-5 rounded flex items-center justify-center border transition-all flex-shrink-0 ${
+                        selectedGroupIds.length === userGroups.length
+                          ? 'bg-indigo-500 border-indigo-500'
+                          : selectedGroupIds.length > 0
+                            ? 'bg-indigo-500/30 border-indigo-500/50'
+                            : 'border-white/20'
+                      }`}>
+                        {selectedGroupIds.length > 0 && (
+                          <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                            {selectedGroupIds.length === userGroups.length
+                              ? <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                              : <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />}
+                          </svg>
+                        )}
+                      </div>
+                      <span className="text-sm font-medium text-gray-300">
+                        {selectedGroupIds.length === userGroups.length ? 'Deselect All' : 'Select All'}
+                      </span>
+                    </button>
+
+                    <div className="h-px bg-white/5" />
+
+                    {/* Group list */}
+                    {userGroups.map(group => {
+                      const isSelected = selectedGroupIds.includes(group.id);
+                      return (
+                        <button
+                          key={group.id}
+                          onClick={() => toggleGroup(group.id)}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-left ${
+                            isSelected ? 'bg-indigo-500/10 border border-indigo-500/20' : 'hover:bg-white/5 border border-transparent'
+                          }`}
+                        >
+                          <div className={`w-5 h-5 rounded flex items-center justify-center border transition-all flex-shrink-0 ${
+                            isSelected ? 'bg-indigo-500 border-indigo-500' : 'border-white/20'
+                          }`}>
+                            {isSelected && (
+                              <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                              </svg>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium text-white truncate">{group.name}</div>
+                            <div className="text-xs text-gray-500">{group.member_count} member{group.member_count !== 1 ? 's' : ''} · {group.problem_count} problem{group.problem_count !== 1 ? 's' : ''}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Import Method Cards */}
           <div className="grid grid-cols-1 gap-4">
             <button 
               onClick={() => {
@@ -606,6 +785,33 @@ export default function LeetCodeImport({ onSuccess, onCancel }) {
               <div className="text-xs text-gray-400 uppercase tracking-wider mt-1">{result.mode === 'recent-sync' ? 'Recent Found' : 'Total Found'}</div>
             </div>
           </div>
+
+          {/* Group add results */}
+          {(result.groupsUpdated > 0 || result.groupsFailed > 0) && (
+            <div className={`p-4 rounded-xl border flex items-center gap-3 ${
+              result.groupsFailed > 0
+                ? 'bg-yellow-500/10 border-yellow-500/20'
+                : 'bg-indigo-500/10 border-indigo-500/20'
+            }`}>
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                result.groupsFailed > 0 ? 'bg-yellow-500/20' : 'bg-indigo-500/20'
+              }`}>
+                <svg className={`w-5 h-5 ${result.groupsFailed > 0 ? 'text-yellow-400' : 'text-indigo-400'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
+                </svg>
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-white">
+                  Problems added to {result.groupsUpdated} group{result.groupsUpdated !== 1 ? 's' : ''}
+                </div>
+                {result.groupsFailed > 0 && (
+                  <div className="text-xs text-yellow-400 mt-0.5">
+                    {result.groupsFailed} group{result.groupsFailed !== 1 ? 's' : ''} failed (not a member or group removed)
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {result.mode === 'recent-sync' && result.total === 0 && result.totalSolvedOnLeetCode > 0 && (
             <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 text-sm">

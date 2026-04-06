@@ -130,6 +130,53 @@ async function updateProgress(userId, num, newStatus, timestamp) {
   return newStatus === 'solved' ? 'solved' : 'attempted';
 }
 
+// Helper: add imported problem numbers to specified groups (with membership check)
+async function addProblemsToGroups(userId, problemNumbers, groupIds) {
+  if (!Array.isArray(groupIds) || groupIds.length === 0 || problemNumbers.length === 0) {
+    return { groupsUpdated: 0, groupsFailed: 0 };
+  }
+
+  let groupsUpdated = 0;
+  let groupsFailed = 0;
+  const addedAt = new Date().toISOString();
+
+  for (const groupId of groupIds) {
+    try {
+      // Validate membership
+      const membership = await getItem(`GROUP#${groupId}`, `MEMBER#${userId}`);
+      if (!membership) {
+        groupsFailed++;
+        continue;
+      }
+
+      // Get existing problems in group to avoid duplicates
+      const existingGroupProblems = await queryItems(`GROUP#${groupId}`, 'PROBLEM#');
+      const existingIds = new Set(
+        existingGroupProblems.map((item) => parseInt(item.SK.replace('PROBLEM#', ''), 10))
+      );
+
+      let addedCount = 0;
+      for (const num of problemNumbers) {
+        if (existingIds.has(num)) continue;
+        await putItem({
+          PK: `GROUP#${groupId}`,
+          SK: `PROBLEM#${num}`,
+          addedBy: userId,
+          addedAt,
+        });
+        addedCount++;
+      }
+
+      if (addedCount > 0) groupsUpdated++;
+    } catch (err) {
+      console.error(`Failed to add problems to group ${groupId}:`, err.message);
+      groupsFailed++;
+    }
+  }
+
+  return { groupsUpdated, groupsFailed };
+}
+
 async function fetchAcceptedProblemData(username) {
   const profileQuery = `
     query userPublicProfile($username: String!) {
@@ -235,6 +282,7 @@ module.exports = function () {
       && ('solvedMap' in req.body || 'attemptedMap' in req.body);
     const solvedMap = hasStructuredPayload ? (req.body.solvedMap || {}) : (req.body || {});
     const attemptedMap = hasStructuredPayload ? (req.body.attemptedMap || {}) : {};
+    const groupIds = Array.isArray(req.body?.groupIds) ? req.body.groupIds : [];
 
     const isSolvedMapValid = solvedMap && typeof solvedMap === 'object' && !Array.isArray(solvedMap);
     const isAttemptedMapValid = attemptedMap && typeof attemptedMap === 'object' && !Array.isArray(attemptedMap);
@@ -250,6 +298,7 @@ module.exports = function () {
       let attemptedCount = 0;
       let alreadyExistsCount = 0;
       let failedCount = 0;
+      const importedProblemNumbers = [];
 
       for (const [slug, unixTimestamp] of solvedEntries) {
         try {
@@ -266,8 +315,12 @@ module.exports = function () {
           await ensureProblemExists(problemData, req.userId);
           
           const result = await updateProgress(req.userId, num, 'solved', ts);
-          if (result === 'solved') solvedCount++;
-          else alreadyExistsCount++;
+          if (result === 'solved') {
+            solvedCount++;
+            importedProblemNumbers.push(num);
+          } else {
+            alreadyExistsCount++;
+          }
         } catch (err) {
           console.error(`Failed to import problem "${slug}":`, err.message);
           failedCount++;
@@ -289,13 +342,22 @@ module.exports = function () {
           await ensureProblemExists(problemData, req.userId);
 
           const result = await updateProgress(req.userId, num, 'attempted', ts);
-          if (result === 'attempted') attemptedCount++;
-          else alreadyExistsCount++;
+          if (result === 'attempted') {
+            attemptedCount++;
+            importedProblemNumbers.push(num);
+          } else {
+            alreadyExistsCount++;
+          }
         } catch (err) {
           console.error(`Failed to import attempted problem "${slug}":`, err.message);
           failedCount++;
         }
       }
+
+      // Add imported problems to selected groups
+      const { groupsUpdated, groupsFailed } = await addProblemsToGroups(
+        req.userId, importedProblemNumbers, groupIds
+      );
       
       res.json({ 
         success: true, 
@@ -303,7 +365,9 @@ module.exports = function () {
         attempted: attemptedCount,
         alreadyExists: alreadyExistsCount,
         failed: failedCount,
-        total: solvedEntries.length + attemptedEntries.length
+        total: solvedEntries.length + attemptedEntries.length,
+        groupsUpdated,
+        groupsFailed,
       });
     } catch (error) {
       console.error('LeetCode Import Error:', error);
@@ -313,6 +377,8 @@ module.exports = function () {
 
   router.post('/sync', auth, async (req, res) => {
     try {
+      const groupIds = Array.isArray(req.body?.groupIds) ? req.body.groupIds : [];
+
       const user = await getItem(`USER#${req.userId}`, 'PROFILE');
       if (!user) return res.status(404).json({ error: 'User not found' });
       
@@ -366,6 +432,7 @@ module.exports = function () {
       let attemptedImported = 0;
       let alreadyTracked = 0;
       let failed = 0;
+      const importedProblemNumbers = [];
 
       for (const [slug, timestamp] of recentSolvedMap.entries()) {
         const problemData = await resolveProblemData(slug);
@@ -374,8 +441,12 @@ module.exports = function () {
           const ts = timestamp || defaultTimestamp;
           await ensureProblemExists(problemData, req.userId);
           const result = await updateProgress(req.userId, num, 'solved', ts);
-          if (result === 'solved') newlyImported++;
-          else alreadyTracked++;
+          if (result === 'solved') {
+            newlyImported++;
+            importedProblemNumbers.push(num);
+          } else {
+            alreadyTracked++;
+          }
         } else {
           failed++;
         }
@@ -388,12 +459,21 @@ module.exports = function () {
           const ts = timestamp || defaultTimestamp;
           await ensureProblemExists(problemData, req.userId);
           const result = await updateProgress(req.userId, num, 'attempted', ts);
-          if (result === 'attempted') attemptedImported++;
-          else alreadyTracked++;
+          if (result === 'attempted') {
+            attemptedImported++;
+            importedProblemNumbers.push(num);
+          } else {
+            alreadyTracked++;
+          }
         } else {
           failed++;
         }
       }
+
+      // Add imported problems to selected groups
+      const { groupsUpdated, groupsFailed } = await addProblemsToGroups(
+        req.userId, importedProblemNumbers, groupIds
+      );
 
       res.json({ 
         success: true, 
@@ -406,6 +486,8 @@ module.exports = function () {
         recentSolvedFound: recentSolvedMap.size,
         recentAttemptedFound: recentAttemptedMap.size,
         bestEffortAttempted: true,
+        groupsUpdated,
+        groupsFailed,
       });
     } catch (error) {
       console.error('LeetCode Sync Error:', error);
