@@ -1,9 +1,52 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import AddFromProblemsetModal from '../components/groups/AddFromProblemsetModal';
 import { COMPANY_OPTIONS, getProblemTopics } from '../utils/problemFilters';
+
+const BULK_GROUP_ADD_CONCURRENCY = 3;
+
+function createEmptyBulkProgress(total = 0) {
+  return {
+    total,
+    completed: 0,
+    added: 0,
+    skipped: 0,
+    failed: 0,
+  };
+}
+
+function parseBulkProblemNumbers(input) {
+  const tokens = input.split(/[,\s;]+/).map(token => token.trim()).filter(Boolean);
+  const seen = new Set();
+  const numbers = [];
+  const duplicates = [];
+  const invalidTokens = [];
+
+  tokens.forEach(token => {
+    if (!/^\d+$/.test(token)) {
+      invalidTokens.push(token);
+      return;
+    }
+
+    const number = Number(token);
+    if (!Number.isSafeInteger(number) || number <= 0) {
+      invalidTokens.push(token);
+      return;
+    }
+
+    if (seen.has(number)) {
+      duplicates.push(number);
+      return;
+    }
+
+    seen.add(number);
+    numbers.push(number);
+  });
+
+  return { tokens, numbers, duplicates, invalidTokens };
+}
 
 export default function GroupDetail() {
   const { id } = useParams();
@@ -15,9 +58,13 @@ export default function GroupDetail() {
   const [showAddProblem, setShowAddProblem] = useState(false);
   const [showAddFromProblemset, setShowAddFromProblemset] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showDeleteGroup, setShowDeleteGroup] = useState(false);
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [expandedTopics, setExpandedTopics] = useState({});
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false);
   
   // Advanced filters
   const [activePattern, setActivePattern] = useState('all');
@@ -31,15 +78,30 @@ export default function GroupDetail() {
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [addMode, setAddMode] = useState('single');
+  const [bulkInput, setBulkInput] = useState('');
+  const [bulkError, setBulkError] = useState('');
+  const [isBulkAdding, setIsBulkAdding] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState(() => createEmptyBulkProgress());
+  const [bulkResults, setBulkResults] = useState([]);
+  const searchTimeoutRef = useRef(null);
 
-  const fetchGroup = () => {
-    api.getCached(`/groups/${id}`, {}, 10000)
+  const fetchGroup = useCallback(() => {
+    return api.getCached(`/groups/${id}`, {}, 10000)
       .then(res => setGroup(res.data))
       .catch(() => navigate('/groups'))
       .finally(() => setLoading(false));
-  };
+  }, [id, navigate]);
 
-  useEffect(() => { fetchGroup(); }, [id]);
+  useEffect(() => { fetchGroup(); }, [fetchGroup]);
+
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const patterns = useMemo(() => {
     return getProblemTopics(group?.problems || []);
@@ -80,6 +142,12 @@ export default function GroupDetail() {
     });
   }, [group, user, activePattern, difficultyFilter, solvedFilter, groupStatusFilter, companyFilter]);
 
+  const isGroupCreator = group?.created_by === user?.id;
+  const bulkParseResult = useMemo(() => parseBulkProblemNumbers(bulkInput), [bulkInput]);
+  const bulkCompletionPercent = bulkProgress.total > 0
+    ? Math.round((bulkProgress.completed / bulkProgress.total) * 100)
+    : 0;
+
   const handleAddMember = async () => {
     if (!username.trim()) return;
     setError('');
@@ -93,22 +161,21 @@ export default function GroupDetail() {
     }
   };
 
-  let searchTimeout = null;
-
   const handleSearch = async (query) => {
     setSearchQuery(query);
     setPreview(null);
     setError('');
     
-    if (searchTimeout) clearTimeout(searchTimeout);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     
     if (!query.trim()) {
       setSearchResults([]);
+      setIsSearching(false);
       return;
     }
 
     setIsSearching(true);
-    searchTimeout = setTimeout(async () => {
+    searchTimeoutRef.current = setTimeout(async () => {
       try {
         const res = await api.get(`/problems/search?q=${encodeURIComponent(query)}`);
         setSearchResults(res.data);
@@ -121,18 +188,34 @@ export default function GroupDetail() {
   };
 
   const handleSelectProblem = (prob) => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+    }
     setPreview(prob);
     setSearchQuery('');
     setSearchResults([]);
+    setIsSearching(false);
     setError('');
   };
 
   const resetProblemModal = () => {
+    if (isBulkAdding) return;
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+    }
     setShowAddProblem(false);
     setError('');
     setPreview(null);
     setSearchQuery('');
     setSearchResults([]);
+    setIsSearching(false);
+    setAddMode('single');
+    setBulkInput('');
+    setBulkError('');
+    setBulkProgress(createEmptyBulkProgress());
+    setBulkResults([]);
   };
 
   const upsertGroupProblem = (problem, currentUserStatus = 'unsolved') => {
@@ -224,6 +307,133 @@ export default function GroupDetail() {
       resetProblemModal();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to add problem');
+    }
+  };
+
+  const recordBulkResult = (result) => {
+    setBulkResults(prev => [...prev, result]);
+    setBulkProgress(prev => {
+      const next = {
+        ...prev,
+        completed: prev.completed + 1,
+      };
+
+      if (result.status === 'added') {
+        next.added += 1;
+      } else if (result.status === 'skipped') {
+        next.skipped += 1;
+      } else {
+        next.failed += 1;
+      }
+
+      return next;
+    });
+  };
+
+  const handleBulkAddProblems = async () => {
+    if (isBulkAdding) return;
+
+    const { numbers, duplicates, invalidTokens } = bulkParseResult;
+    if (numbers.length === 0) {
+      setBulkError('Enter at least one valid LeetCode question number.');
+      return;
+    }
+
+    const preflightResults = [
+      ...duplicates.map(number => ({
+        status: 'duplicate',
+        number,
+        message: 'Duplicate in input',
+      })),
+      ...invalidTokens.map(token => ({
+        status: 'invalid',
+        token,
+        message: 'Invalid number',
+      })),
+    ];
+
+    setError('');
+    setBulkError('');
+    setBulkResults(preflightResults);
+    setBulkProgress(createEmptyBulkProgress(numbers.length));
+    setIsBulkAdding(true);
+
+    let nextIndex = 0;
+
+    const addNextProblem = async () => {
+      while (nextIndex < numbers.length) {
+        const number = numbers[nextIndex];
+        nextIndex += 1;
+
+        try {
+          let problemData;
+          try {
+            const problemRes = await api.post('/problems', {
+              leetcode_number: number,
+              require_dataset: true,
+            });
+            problemData = problemRes.data;
+          } catch (err) {
+            if (err.response?.data?.problem) {
+              problemData = err.response.data.problem;
+            } else {
+              throw err;
+            }
+          }
+
+          try {
+            const addRes = await api.post(`/groups/${id}/problems`, { problem_id: problemData.id });
+            upsertGroupProblem(addRes.data, problemData.status || 'unsolved');
+            recordBulkResult({
+              status: 'added',
+              number,
+              title: addRes.data.title || problemData.title,
+              message: 'Added',
+            });
+          } catch (err) {
+            const responseError = err.response?.data?.error || '';
+            if (err.response?.status === 400 && responseError.includes('already in group')) {
+              recordBulkResult({
+                status: 'skipped',
+                number,
+                title: problemData.title,
+                message: 'Already in group',
+              });
+            } else {
+              throw err;
+            }
+          }
+        } catch (err) {
+          recordBulkResult({
+            status: 'failed',
+            number,
+            message: err.response?.data?.error || 'Failed to add problem',
+          });
+        }
+      }
+    };
+
+    try {
+      const workerCount = Math.min(BULK_GROUP_ADD_CONCURRENCY, numbers.length);
+      await Promise.all(Array.from({ length: workerCount }, addNextProblem));
+      await fetchGroup();
+    } finally {
+      setIsBulkAdding(false);
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!group || deleteConfirmName !== group.name || isDeletingGroup) return;
+
+    setDeleteError('');
+    setIsDeletingGroup(true);
+
+    try {
+      await api.delete(`/groups/${id}`, { data: { name: deleteConfirmName } });
+      navigate('/groups');
+    } catch (err) {
+      setDeleteError(err.response?.data?.error || 'Failed to delete group');
+      setIsDeletingGroup(false);
     }
   };
 
@@ -373,7 +583,7 @@ export default function GroupDetail() {
             {group.members?.length} members · {group.problems?.length} problems · Created by {group.creator_name}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button 
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-all font-medium text-sm text-gray-200" 
             onClick={() => setShowAddMember(true)}
@@ -401,6 +611,21 @@ export default function GroupDetail() {
             </svg>
             Add Problem
           </button>
+          {isGroupCreator && (
+            <button
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 transition-all font-medium text-sm text-red-300"
+              onClick={() => {
+                setDeleteConfirmName('');
+                setDeleteError('');
+                setShowDeleteGroup(true);
+              }}
+            >
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+              </svg>
+              Delete Group
+            </button>
+          )}
         </div>
       </div>
 
@@ -821,77 +1046,324 @@ export default function GroupDetail() {
 
       {/* Add Problem Modal */}
       {showAddProblem && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={resetProblemModal}>
-          <div className="bg-neutral-900 border border-white/10 rounded-2xl p-6 w-full max-w-lg shadow-2xl relative" onClick={e => e.stopPropagation()}>
-            <h2 className="text-xl font-bold text-white mb-6">Add Problem to Group</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Search Title or #</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={e => handleSearch(e.target.value)}
-                    placeholder="e.g. Two Sum..."
-                    className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-white pl-10 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-600"
-                    autoComplete="off"
-                  />
-                  <svg className="w-5 h-5 absolute left-3 top-3 text-gray-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-                  </svg>
-                  {isSearching && <span className="absolute right-3 top-2.5 text-indigo-400">...</span>}
-                </div>
-                
-                {searchResults.length > 0 && (
-                  <div className="absolute left-6 right-6 mt-1 bg-neutral-800 border border-white/10 rounded-lg shadow-xl overflow-hidden z-20 max-h-60 overflow-y-auto">
-                    {searchResults.map(res => (
-                      <div 
-                        key={res.number} 
-                        className="flex items-center gap-3 p-3 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-0"
-                        onClick={() => handleSelectProblem(res)}
-                      >
-                        <span className="text-gray-500 font-mono text-xs w-8">#{res.number}</span>
-                        <span className="font-medium text-gray-200 flex-1 truncate">{res.title}</span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          res.difficulty === 'Easy' ? 'bg-blue-500/10 text-blue-400' : 
-                          res.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400' : 
-                          'bg-red-500/10 text-red-400'
-                        }`}>{res.difficulty}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4" onClick={resetProblemModal}>
+          <div className="bg-neutral-900 border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl relative max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-white/10 flex-shrink-0">
+              <h2 className="text-xl font-bold text-white">Add Problem to Group</h2>
+              <button
+                type="button"
+                onClick={resetProblemModal}
+                disabled={isBulkAdding}
+                className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Close"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              <div className="grid grid-cols-2 gap-1 rounded-xl bg-black/40 border border-white/10 p-1">
+                <button
+                  type="button"
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                    addMode === 'single'
+                      ? 'bg-white text-black shadow'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  } ${isBulkAdding ? 'cursor-not-allowed opacity-60' : ''}`}
+                  onClick={() => {
+                    if (isBulkAdding) return;
+                    setAddMode('single');
+                    setBulkError('');
+                  }}
+                  disabled={isBulkAdding}
+                >
+                  Single
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                    addMode === 'bulk'
+                      ? 'bg-white text-black shadow'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  } ${isBulkAdding ? 'cursor-not-allowed opacity-60' : ''}`}
+                  onClick={() => {
+                    if (isBulkAdding) return;
+                    setAddMode('bulk');
+                    setError('');
+                  }}
+                  disabled={isBulkAdding}
+                >
+                  Bulk
+                </button>
               </div>
 
-              {error && <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>}
-
-              {preview && (
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4 mt-4">
-                  <div className="font-medium text-white mb-2">{preview.title}</div>
-                  <div className="flex flex-wrap gap-2">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                      preview.difficulty === 'Easy' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 
-                      preview.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 
-                      'bg-red-500/10 text-red-400 border-red-500/20'
-                    } border`}>{preview.difficulty}</span>
-                    {preview.topics && preview.topics.map(t => (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20" key={t}>{t}</span>
-                    ))}
+              {addMode === 'single' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">Search Title or #</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={e => handleSearch(e.target.value)}
+                        placeholder="e.g. Two Sum..."
+                        className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-white pl-10 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-600"
+                        autoComplete="off"
+                      />
+                      <svg className="w-5 h-5 absolute left-3 top-3 text-gray-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                      </svg>
+                      {isSearching && <span className="absolute right-3 top-2.5 text-indigo-400">
+                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      </span>}
+                    </div>
+                    
+                    {searchResults.length > 0 && (
+                      <div className="absolute left-5 right-5 mt-1 bg-neutral-800 border border-white/10 rounded-lg shadow-xl overflow-hidden z-20 max-h-60 overflow-y-auto">
+                        {searchResults.map(res => (
+                          <div 
+                            key={res.number} 
+                            className="flex items-center gap-3 p-3 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-0"
+                            onClick={() => handleSelectProblem(res)}
+                          >
+                            <span className="text-gray-500 font-mono text-xs w-8">#{res.number}</span>
+                            <span className="font-medium text-gray-200 flex-1 truncate">{res.title}</span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              res.difficulty === 'Easy' ? 'bg-blue-500/10 text-blue-400' : 
+                              res.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400' : 
+                              'bg-red-500/10 text-red-400'
+                            }`}>{res.difficulty}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
+
+                  {error && <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>}
+
+                  {preview && (
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-4 mt-4">
+                      <div className="font-medium text-white mb-2">{preview.title}</div>
+                      <div className="flex flex-wrap gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          preview.difficulty === 'Easy' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 
+                          preview.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 
+                          'bg-red-500/10 text-red-400 border-red-500/20'
+                        } border`}>{preview.difficulty}</span>
+                        {preview.topics && preview.topics.map(t => (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20" key={t}>{t}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {addMode === 'bulk' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">LeetCode Question Numbers</label>
+                    <textarea
+                      value={bulkInput}
+                      onChange={e => {
+                        setBulkInput(e.target.value);
+                        setBulkError('');
+                        setBulkResults([]);
+                        setBulkProgress(createEmptyBulkProgress());
+                      }}
+                      disabled={isBulkAdding}
+                      rows={4}
+                      placeholder={`1, 2, 15\n49 53 121\n200; 206; 217`}
+                      className="w-full resize-none bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-600 disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                  </div>
+
+                  {bulkInput.trim() && (
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-xl bg-white/5 border border-white/10 p-2.5">
+                        <div className="text-base font-bold text-white">{bulkParseResult.numbers.length}</div>
+                        <div className="text-[11px] uppercase tracking-wide text-gray-500">Unique</div>
+                      </div>
+                      <div className="rounded-xl bg-white/5 border border-white/10 p-2.5">
+                        <div className="text-base font-bold text-yellow-400">{bulkParseResult.duplicates.length}</div>
+                        <div className="text-[11px] uppercase tracking-wide text-gray-500">Duplicates</div>
+                      </div>
+                      <div className="rounded-xl bg-white/5 border border-white/10 p-2.5">
+                        <div className="text-base font-bold text-red-400">{bulkParseResult.invalidTokens.length}</div>
+                        <div className="text-[11px] uppercase tracking-wide text-gray-500">Invalid</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {bulkError && <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{bulkError}</div>}
+
+                  {(bulkProgress.total > 0 || bulkResults.length > 0) && (
+                    <div className="rounded-xl bg-white/5 border border-white/10 p-3 space-y-3">
+                      {bulkProgress.total > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium text-white">
+                              {isBulkAdding ? 'Adding problems...' : 'Bulk add complete'}
+                            </span>
+                            <span className="text-gray-400">{bulkProgress.completed} / {bulkProgress.total}</span>
+                          </div>
+                          <div className="h-2 rounded-full bg-black/50 border border-white/10 overflow-hidden">
+                            <div
+                              className="h-full bg-indigo-500 transition-all duration-300"
+                              style={{ width: `${bulkCompletionPercent}%` }}
+                            />
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                            <div className="rounded-lg bg-green-500/10 border border-green-500/20 px-2 py-2 text-green-400">
+                              {bulkProgress.added} added
+                            </div>
+                            <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/20 px-2 py-2 text-yellow-400">
+                              {bulkProgress.skipped} in group
+                            </div>
+                            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-2 py-2 text-red-400">
+                              {bulkProgress.failed} failed
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {bulkResults.length > 0 && (
+                        <div className="max-h-32 overflow-y-auto divide-y divide-white/5 rounded-lg border border-white/10 bg-black/30">
+                          {bulkResults.map((result, index) => {
+                            const isGood = result.status === 'added';
+                            const isWarning = result.status === 'skipped' || result.status === 'duplicate';
+                            const badgeClass = isGood
+                              ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                              : isWarning
+                                ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
+                                : 'bg-red-500/10 text-red-400 border-red-500/20';
+                            const statusLabel = result.status === 'added'
+                              ? 'Added'
+                              : result.status === 'skipped'
+                                ? 'In group'
+                                : result.status === 'duplicate'
+                                  ? 'Duplicate'
+                                  : result.status === 'invalid'
+                                    ? 'Invalid'
+                                    : 'Failed';
+                            const label = result.number ? `#${result.number}` : result.token;
+
+                            return (
+                              <div key={`${result.status}-${label}-${index}`} className="flex items-center gap-3 px-3 py-2 text-sm">
+                                <span className="font-mono text-gray-500 w-16 flex-shrink-0 truncate">{label}</span>
+                                <span className="text-gray-300 flex-1 min-w-0 truncate">{result.title || result.message}</span>
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${badgeClass}`}>
+                                  {statusLabel}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
+            <div className="flex justify-end gap-3 px-5 py-4 border-t border-white/10 bg-neutral-900 flex-shrink-0">
+              <button
+                className="px-4 py-2 rounded-lg border border-white/10 text-gray-300 font-medium hover:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={resetProblemModal}
+                disabled={isBulkAdding}
+              >
+                {addMode === 'bulk' && bulkProgress.completed > 0 && !isBulkAdding ? 'Close' : 'Cancel'}
+              </button>
+              {addMode === 'single' ? (
+                <button 
+                  className="px-6 py-2 rounded-lg bg-white text-black font-medium hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" 
+                  onClick={handleAddProblem} 
+                  disabled={!preview}
+                >
+                  Add Problem
+                </button>
+              ) : (
+                <button
+                  className="px-6 py-2 rounded-lg bg-white text-black font-medium hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-32"
+                  onClick={handleBulkAddProblems}
+                  disabled={isBulkAdding || bulkParseResult.numbers.length === 0}
+                >
+                  {isBulkAdding && (
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  )}
+                  {isBulkAdding ? 'Adding...' : 'Add Problems'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Group Modal */}
+      {showDeleteGroup && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => {
+            if (isDeletingGroup) return;
+            setShowDeleteGroup(false);
+            setDeleteConfirmName('');
+            setDeleteError('');
+          }}
+        >
+          <div className="bg-neutral-900 border border-red-500/20 rounded-2xl p-6 w-full max-w-md shadow-2xl relative" onClick={e => e.stopPropagation()}>
+            <h2 className="text-xl font-bold text-white mb-3">Delete Group</h2>
+            <p className="text-sm text-gray-400 mb-5">
+              This will permanently delete <span className="font-semibold text-white">{group.name}</span> for every member, including all group membership and problem entries.
+            </p>
+
+            {deleteError && (
+              <div className="p-3 mb-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <label className="block text-sm font-medium text-gray-300">
+                Type <span className="font-mono text-white">{group.name}</span> to confirm.
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmName}
+                onChange={e => {
+                  setDeleteConfirmName(e.target.value);
+                  setDeleteError('');
+                }}
+                className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:ring-1 focus:ring-red-500 focus:border-red-500 outline-none transition-all placeholder-gray-600"
+                autoFocus
+              />
+            </div>
+
             <div className="flex justify-end gap-3 mt-8">
-              <button className="px-4 py-2 rounded-lg border border-white/10 text-gray-300 font-medium hover:bg-white/5 transition-colors" onClick={resetProblemModal}>
+              <button
+                className="px-4 py-2 rounded-lg border border-white/10 text-gray-300 font-medium hover:bg-white/5 transition-colors disabled:opacity-50"
+                onClick={() => {
+                  setShowDeleteGroup(false);
+                  setDeleteConfirmName('');
+                  setDeleteError('');
+                }}
+                disabled={isDeletingGroup}
+              >
                 Cancel
               </button>
-              <button 
-                className="px-6 py-2 rounded-lg bg-white text-black font-medium hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" 
-                onClick={handleAddProblem} 
-                disabled={!preview}
+              <button
+                className="px-5 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleDeleteGroup}
+                disabled={deleteConfirmName !== group.name || isDeletingGroup}
               >
-                Add Problem
+                {isDeletingGroup ? 'Deleting...' : 'Delete Group'}
               </button>
             </div>
           </div>

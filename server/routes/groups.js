@@ -380,6 +380,42 @@ module.exports = function () {
     }
   });
 
+  // Delete group (creator only)
+  router.delete('/:id', auth, async (req, res) => {
+    try {
+      const groupId = req.params.id;
+      const confirmationName = (req.body?.name || '').trim();
+      const detail = await getItem(`GROUP#${groupId}`, 'DETAIL');
+
+      if (!detail) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+
+      if (detail.createdBy !== req.userId) {
+        return res.status(403).json({ error: 'Only the group creator can delete this group' });
+      }
+
+      if (confirmationName !== detail.name) {
+        return res.status(400).json({ error: 'Group name confirmation does not match' });
+      }
+
+      const groupItems = await queryItems(`GROUP#${groupId}`);
+      const memberIds = groupItems
+        .filter((item) => item.SK?.startsWith('MEMBER#'))
+        .map((item) => item.SK.replace('MEMBER#', ''));
+
+      await Promise.all([
+        ...groupItems.map((item) => deleteItem(item.PK, item.SK)),
+        ...memberIds.map((memberId) => deleteItem(`USERGROUP#${memberId}`, `GROUP#${groupId}`)),
+      ]);
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Delete group error:', err);
+      res.status(500).json({ error: 'Failed to delete group' });
+    }
+  });
+
   // Leave group
   router.delete('/:id/leave', auth, async (req, res) => {
     try {

@@ -776,46 +776,59 @@ export default function Problems() {
 
       {/* Add Problem Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={closeAddModal}>
-          <div className="bg-neutral-900 border border-white/10 rounded-2xl p-6 w-full max-w-xl shadow-2xl relative" onClick={e => e.stopPropagation()}>
-            <h2 className="text-xl font-bold text-white mb-5">Add Problem</h2>
-
-            <div className="grid grid-cols-2 gap-1 rounded-xl bg-black/40 border border-white/10 p-1 mb-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4" onClick={closeAddModal}>
+          <div className="bg-neutral-900 border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl relative max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-white/10 flex-shrink-0">
+              <h2 className="text-xl font-bold text-white">Add Problem</h2>
               <button
                 type="button"
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                  addMode === 'single'
-                    ? 'bg-white text-black shadow'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                } ${isBulkAdding ? 'cursor-not-allowed opacity-60' : ''}`}
-                onClick={() => {
-                  if (isBulkAdding) return;
-                  setAddMode('single');
-                  setBulkError('');
-                }}
+                onClick={closeAddModal}
                 disabled={isBulkAdding}
+                className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Close"
               >
-                Single
-              </button>
-              <button
-                type="button"
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                  addMode === 'bulk'
-                    ? 'bg-white text-black shadow'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                } ${isBulkAdding ? 'cursor-not-allowed opacity-60' : ''}`}
-                onClick={() => {
-                  if (isBulkAdding) return;
-                  setAddMode('bulk');
-                  setAddError('');
-                }}
-                disabled={isBulkAdding}
-              >
-                Bulk
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              <div className="grid grid-cols-2 gap-1 rounded-xl bg-black/40 border border-white/10 p-1">
+                <button
+                  type="button"
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                    addMode === 'single'
+                      ? 'bg-white text-black shadow'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  } ${isBulkAdding ? 'cursor-not-allowed opacity-60' : ''}`}
+                  onClick={() => {
+                    if (isBulkAdding) return;
+                    setAddMode('single');
+                    setBulkError('');
+                  }}
+                  disabled={isBulkAdding}
+                >
+                  Single
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                    addMode === 'bulk'
+                      ? 'bg-white text-black shadow'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  } ${isBulkAdding ? 'cursor-not-allowed opacity-60' : ''}`}
+                  onClick={() => {
+                    if (isBulkAdding) return;
+                    setAddMode('bulk');
+                    setAddError('');
+                  }}
+                  disabled={isBulkAdding}
+                >
+                  Bulk
+                </button>
+              </div>
+
               {addMode === 'single' && (
                 <>
                   <div>
@@ -894,7 +907,7 @@ export default function Problems() {
                         setBulkProgress(createEmptyBulkProgress());
                       }}
                       disabled={isBulkAdding}
-                      rows={6}
+                      rows={4}
                       placeholder={`1, 2, 15\n49 53 121\n200; 206; 217`}
                       className="w-full resize-none bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-600 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
@@ -902,16 +915,16 @@ export default function Problems() {
 
                   {bulkInput.trim() && (
                     <div className="grid grid-cols-3 gap-2">
-                      <div className="rounded-xl bg-white/5 border border-white/10 p-3">
-                        <div className="text-lg font-bold text-white">{bulkParseResult.numbers.length}</div>
+                      <div className="rounded-xl bg-white/5 border border-white/10 p-2.5">
+                        <div className="text-base font-bold text-white">{bulkParseResult.numbers.length}</div>
                         <div className="text-[11px] uppercase tracking-wide text-gray-500">Unique</div>
                       </div>
-                      <div className="rounded-xl bg-white/5 border border-white/10 p-3">
-                        <div className="text-lg font-bold text-yellow-400">{bulkParseResult.duplicates.length}</div>
+                      <div className="rounded-xl bg-white/5 border border-white/10 p-2.5">
+                        <div className="text-base font-bold text-yellow-400">{bulkParseResult.duplicates.length}</div>
                         <div className="text-[11px] uppercase tracking-wide text-gray-500">Duplicates</div>
                       </div>
-                      <div className="rounded-xl bg-white/5 border border-white/10 p-3">
-                        <div className="text-lg font-bold text-red-400">{bulkParseResult.invalidTokens.length}</div>
+                      <div className="rounded-xl bg-white/5 border border-white/10 p-2.5">
+                        <div className="text-base font-bold text-red-400">{bulkParseResult.invalidTokens.length}</div>
                         <div className="text-[11px] uppercase tracking-wide text-gray-500">Invalid</div>
                       </div>
                     </div>
@@ -920,7 +933,7 @@ export default function Problems() {
                   {bulkError && <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{bulkError}</div>}
 
                   {(bulkProgress.total > 0 || bulkResults.length > 0) && (
-                    <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-4">
+                    <div className="rounded-xl bg-white/5 border border-white/10 p-3 space-y-3">
                       {bulkProgress.total > 0 && (
                         <div className="space-y-3">
                           <div className="flex items-center justify-between text-sm">
@@ -950,7 +963,7 @@ export default function Problems() {
                       )}
 
                       {bulkResults.length > 0 && (
-                        <div className="max-h-44 overflow-y-auto divide-y divide-white/5 rounded-lg border border-white/10 bg-black/30">
+                        <div className="max-h-32 overflow-y-auto divide-y divide-white/5 rounded-lg border border-white/10 bg-black/30">
                           {bulkResults.map((result, index) => {
                             const isGood = result.status === 'added';
                             const isWarning = result.status === 'skipped' || result.status === 'duplicate';
@@ -988,7 +1001,7 @@ export default function Problems() {
               )}
             </div>
 
-            <div className="flex justify-end gap-3 mt-8">
+            <div className="flex justify-end gap-3 px-5 py-4 border-t border-white/10 bg-neutral-900 flex-shrink-0">
               <button
                 className="px-4 py-2 rounded-lg border border-white/10 text-gray-300 font-medium hover:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={closeAddModal}
