@@ -71,7 +71,7 @@ module.exports = function () {
   // Get problems with filters
   router.get('/', auth, async (req, res) => {
     try {
-      const { pattern, difficulty, solved, company } = req.query;
+      const { pattern, difficulty, solved } = req.query;
 
       // Get user progress for all problems
       const progressItems = await queryItems(`PROGRESS#${req.userId}`, 'PROB#');
@@ -128,7 +128,6 @@ module.exports = function () {
             created_at: problem.createdAt,
             solved: progress.solved,
             status: progress.status,
-            companies: datasetEntry ? (datasetEntry.companies || []) : [],
             topics: datasetEntry ? (datasetEntry.topics || []) : [],
           };
         })
@@ -142,10 +141,6 @@ module.exports = function () {
 
       if (difficulty) {
         result = result.filter((problem) => problem.difficulty === difficulty);
-      }
-
-      if (company && company !== 'all') {
-        result = result.filter((problem) => problem.companies.includes(company));
       }
 
       // Sort by leetcode number
@@ -183,7 +178,6 @@ module.exports = function () {
             url: datasetEntry?.url || manualUrl || null,
             pattern_name: datasetEntry?.topics?.[0] || pattern_name || null,
             topics: datasetEntry?.topics || [],
-            companies: datasetEntry?.companies || [],
             status: progress.status || (progress.solved === 1 ? 'solved' : 'unsolved'),
             solved: progress.solved || 0,
           },
@@ -269,7 +263,6 @@ module.exports = function () {
         status: 'unsolved',
         solved: 0,
         topics: datasetEntry?.topics || [],
-        companies: datasetEntry?.companies || [],
       });
     } catch (err) {
       console.error('Add problem error:', err);

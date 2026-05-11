@@ -1,14 +1,3 @@
-export const COMPANY_OPTIONS = [
-  'Amazon',
-  'Google',
-  'Meta',
-  'Microsoft',
-  'Apple',
-  'Uber',
-  'Adobe',
-  'Netflix',
-];
-
 export function getProblemTopics(problems = []) {
   const topicSet = new Set();
 

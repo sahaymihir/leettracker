@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import api from '../api';
 import LeetCodeImport from '../components/LeetCodeImport';
-import { COMPANY_OPTIONS, getProblemTopics } from '../utils/problemFilters';
+import { getProblemTopics } from '../utils/problemFilters';
 
 const BULK_ADD_CONCURRENCY = 3;
 
@@ -58,7 +58,6 @@ export default function Problems() {
   const [activePattern, setActivePattern] = useState('all');
   const [difficultyFilter, setDifficultyFilter] = useState('');
   const [solvedFilter, setSolvedFilter] = useState('');
-  const [companyFilter, setCompanyFilter] = useState('');
   
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -112,10 +111,9 @@ export default function Problems() {
         || (solvedFilter === 'true' && p.status === 'solved')
         || (solvedFilter === 'false' && p.status === 'unsolved')
         || (solvedFilter === 'attempted' && p.status === 'attempted');
-      const matchCompany = !companyFilter || p.companies?.includes(companyFilter);
-      return matchPattern && matchDifficulty && matchSolved && matchCompany;
+      return matchPattern && matchDifficulty && matchSolved;
     });
-  }, [allProblems, activePattern, difficultyFilter, solvedFilter, companyFilter]);
+  }, [allProblems, activePattern, difficultyFilter, solvedFilter]);
 
   const bulkParseResult = useMemo(() => parseBulkProblemNumbers(bulkInput), [bulkInput]);
   const bulkCompletionPercent = bulkProgress.total > 0
@@ -484,39 +482,12 @@ export default function Problems() {
             </button>
           </div>
 
-          {/* Company Filter */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full group">
-            <div className="flex items-center gap-2 w-32 flex-shrink-0 text-gray-400">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Z" />
-              </svg>
-              <span className="text-sm">Company</span>
-            </div>
-            <div className="flex items-center bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-300 w-24 flex-shrink-0">
-              <span>is</span>
-              <svg className="w-3 h-3 ml-auto opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </div>
-            <select 
-              className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-indigo-500 appearance-none bg-no-repeat bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M7%2010l5%205%205-5H7z%22%20fill%3D%22%23ffffff40%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_8px_center] pr-10"
-              value={companyFilter} 
-              onChange={e => setCompanyFilter(e.target.value)}
-            >
-              <option value="">Any Company</option>
-              {COMPANY_OPTIONS.map(company => (
-                <option key={company} value={company}>{company}</option>
-              ))}
-            </select>
-            <button className="p-1.5 text-gray-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" onClick={() => setCompanyFilter('')}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
-            </button>
-          </div>
-          
         </div>
         
         <div className="mt-6 flex justify-end items-center border-t border-white/10 pt-4">
           <button 
             className="text-gray-400 hover:text-white font-medium text-sm flex items-center gap-2 transition-colors"
-            onClick={() => { setDifficultyFilter(''); setSolvedFilter(''); setCompanyFilter(''); setActivePattern('all'); }}
+            onClick={() => { setDifficultyFilter(''); setSolvedFilter(''); setActivePattern('all'); }}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
             Reset
@@ -605,11 +576,6 @@ export default function Problems() {
                         Show less
                       </button>
                     )}
-                    {p.companies?.[0] && (
-                      <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-gray-500/10 text-gray-400 border border-gray-500/20">
-                        {p.companies[0]}
-                      </span>
-                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -660,7 +626,7 @@ export default function Problems() {
               <span className="uppercase tracking-wider">#</span>
               <span className="uppercase tracking-wider">Title</span>
               <span className="uppercase tracking-wider">Difficulty</span>
-              <span className="uppercase tracking-wider">Pattern / Company</span>
+              <span className="uppercase tracking-wider">Topics</span>
               <span className="text-center uppercase tracking-wider">Del</span>
             </div>
             <div className="divide-y divide-white/5">
@@ -748,11 +714,6 @@ export default function Problems() {
                         >
                           Show less
                         </button>
-                      )}
-                      {p.companies && p.companies.length > 0 && (
-                        <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-gray-500/10 text-gray-400 border border-gray-500/20 truncate max-w-full hidden sm:inline-block">
-                          {p.companies[0]}
-                        </span>
                       )}
                     </div>
                     <div className="flex justify-center">

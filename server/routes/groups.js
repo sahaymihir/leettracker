@@ -20,7 +20,6 @@ function serializeGroupProblem(problem) {
     url: problem.url,
     pattern_name: problem.patternName,
     topics: datasetEntry ? (datasetEntry.topics || []) : [],
-    companies: datasetEntry ? (datasetEntry.companies || []) : [],
   };
 }
 
@@ -213,7 +212,6 @@ module.exports = function () {
             url: problem.url,
             pattern_name: problem.patternName,
             topics: datasetEntry ? (datasetEntry.topics || []) : [],
-            companies: datasetEntry ? (datasetEntry.companies || []) : [],
             member_statuses: memberStatuses,
           };
         });

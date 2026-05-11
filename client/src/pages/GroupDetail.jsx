@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import AddFromProblemsetModal from '../components/groups/AddFromProblemsetModal';
-import { COMPANY_OPTIONS, getProblemTopics } from '../utils/problemFilters';
+import { getProblemTopics } from '../utils/problemFilters';
 
 const BULK_GROUP_ADD_CONCURRENCY = 3;
 
@@ -71,7 +71,6 @@ export default function GroupDetail() {
   const [difficultyFilter, setDifficultyFilter] = useState('');
   const [solvedFilter, setSolvedFilter] = useState('');
   const [groupStatusFilter, setGroupStatusFilter] = useState('');
-  const [companyFilter, setCompanyFilter] = useState('');
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -120,9 +119,6 @@ export default function GroupDetail() {
       // Difficulty filter
       if (difficultyFilter && p.difficulty !== difficultyFilter) return false;
       
-      // Company filter
-      if (companyFilter && (!p.companies || !p.companies.includes(companyFilter))) return false;
-      
       // Personal Status Filter (match behavior of Problems page)
       if (solvedFilter) {
         const myStatus = p.member_statuses?.find(ms => ms.user_id === user?.id)?.status || 'unsolved';
@@ -140,7 +136,7 @@ export default function GroupDetail() {
       
       return true;
     });
-  }, [group, user, activePattern, difficultyFilter, solvedFilter, groupStatusFilter, companyFilter]);
+  }, [group, user, activePattern, difficultyFilter, solvedFilter, groupStatusFilter]);
 
   const isGroupCreator = group?.created_by === user?.id;
   const bulkParseResult = useMemo(() => parseBulkProblemNumbers(bulkInput), [bulkInput]);
@@ -778,39 +774,12 @@ export default function GroupDetail() {
               </button>
             </div>
 
-            {/* Company Filter */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full group">
-              <div className="flex items-center gap-2 w-32 flex-shrink-0 text-gray-400">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Z" />
-                </svg>
-                <span className="text-sm">Company</span>
-              </div>
-              <div className="flex items-center bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-300 w-24 flex-shrink-0">
-                <span>is</span>
-                <svg className="w-3 h-3 ml-auto opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-              </div>
-              <select 
-                className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-indigo-500 appearance-none bg-no-repeat bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M7%2010l5%205%205-5H7z%22%20fill%3D%22%23ffffff40%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_8px_center] pr-10"
-                value={companyFilter} 
-                onChange={e => setCompanyFilter(e.target.value)}
-              >
-                <option value="">Any Company</option>
-                {COMPANY_OPTIONS.map(company => (
-                  <option key={company} value={company}>{company}</option>
-                ))}
-              </select>
-              <button className="p-1.5 text-gray-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" onClick={() => setCompanyFilter('')}>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
-              </button>
-            </div>
-            
           </div>
           
           <div className="mt-6 flex justify-end items-center border-t border-white/10 pt-4">
             <button 
               className="text-gray-400 hover:text-white font-medium text-sm flex items-center gap-2 transition-colors"
-              onClick={() => { setDifficultyFilter(''); setSolvedFilter(''); setGroupStatusFilter(''); setCompanyFilter(''); setActivePattern('all'); }}
+              onClick={() => { setDifficultyFilter(''); setSolvedFilter(''); setGroupStatusFilter(''); setActivePattern('all'); }}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
               Reset

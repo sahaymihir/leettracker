@@ -1,7 +1,7 @@
 const express = require('express');
 const { auth } = require('../middleware/auth');
 const { queryItems, getItem, batchGetItems } = require('../db/dynamodb');
-const { getProblemsDataset, getProblemByNumber } = require('../utils/problemsDataset');
+const { getProblemByNumber } = require('../utils/problemsDataset');
 
 const router = express.Router();
 
@@ -207,27 +207,6 @@ module.exports = function () {
         }
       });
 
-      const problemsDataset = getProblemsDataset();
-      const companyMap = {};
-      problemsDataset.forEach((problem) => {
-        (problem.companies || []).forEach((company) => {
-          if (!companyMap[company]) {
-            companyMap[company] = { company, solved: 0, total: 0 };
-          }
-          companyMap[company].total++;
-          if (progressMap[String(problem.number)]?.solved === 1) {
-            companyMap[company].solved++;
-          }
-        });
-      });
-
-      const companyProgress = Object.values(companyMap)
-        .map((company) => ({
-          ...company,
-          percent: company.total > 0 ? Math.round((company.solved / company.total) * 100) : 0,
-        }))
-        .sort((a, b) => b.percent - a.percent || b.total - a.total);
-
       res.json({
         totalSolved,
         totalAttempted,
@@ -238,7 +217,6 @@ module.exports = function () {
         recentSolved: recentSolved.slice(0, 10),
         heatmapData,
         patternHeatmap,
-        companyProgress,
       });
     } catch (err) {
       console.error('Dashboard error:', err);
@@ -314,46 +292,6 @@ module.exports = function () {
     } catch (err) {
       console.error('Pattern Heatmap error:', err);
       res.status(500).json({ error: 'Failed to load pattern heatmap' });
-    }
-  });
-
-  // Company Progress
-  router.get('/company-progress/:userId', auth, async (req, res) => {
-    try {
-      const uId = req.params.userId === 'me' ? req.userId : req.params.userId;
-
-      const problemsDataset = getProblemsDataset();
-
-      const progressItems = await queryItems(`PROGRESS#${uId}`, 'PROB#');
-      const progressMap = {};
-      progressItems.forEach(p => {
-        if (p.solved === 1) progressMap[p.SK.replace('PROB#', '')] = true;
-      });
-
-      const companyMap = {};
-      problemsDataset.forEach(p => {
-        (p.companies || []).forEach(company => {
-          if (!companyMap[company]) {
-            companyMap[company] = { company, solved: 0, total: 0 };
-          }
-          companyMap[company].total++;
-          if (progressMap[String(p.number)]) {
-            companyMap[company].solved++;
-          }
-        });
-      });
-
-      const result = Object.values(companyMap)
-        .map(c => ({
-          ...c,
-          percent: c.total > 0 ? Math.round((c.solved / c.total) * 100) : 0
-        }))
-        .sort((a, b) => b.percent - a.percent || b.total - a.total); // Sort by % desc, then total desc
-
-      res.json(result);
-    } catch (err) {
-      console.error('Company Progress error:', err);
-      res.status(500).json({ error: 'Failed to load company progress' });
     }
   });
 

@@ -1,15 +1,15 @@
 # LeetTracker
 
-LeetTracker is a full-stack LeetCode tracking app for personal practice and group collaboration. It lets users track problems with `unsolved`, `attempted`, and `solved` states, organize work by topics and companies, sync solved problems from LeetCode, and view progress through dashboards and shared group views.
+LeetTracker is a full-stack LeetCode tracking app for personal practice and group collaboration. It lets users track problems with `unsolved`, `attempted`, and `solved` states, organize work by topics, sync solved problems from LeetCode, and view progress through dashboards and shared group views.
 
 ## What The App Does
 
 - Personal problem tracking with `unsolved`, `attempted`, and `solved` states
 - Dynamic topic filters generated from the actual tracked problem set
-- Difficulty, company, and status filters
+- Difficulty, topic, and status filters
 - Group problem sets with per-member progress columns
 - Add-to-group from your own problem set, including multi-select flows
-- Dashboard with activity heatmap, pattern insights, company progress, group stats, and recent activity
+- Dashboard with activity heatmap, pattern insights, group stats, and recent activity
 - LeetCode import and sync using a saved public LeetCode username
 - Mobile-friendly and desktop-friendly React SPA
 - Manual and scheduled DynamoDB backups to S3
@@ -271,7 +271,6 @@ npm run package --prefix server
 - `GET /api/dashboard`
 - `GET /api/dashboard/heatmap`
 - `GET /api/dashboard/pattern-heatmap/:userId`
-- `GET /api/dashboard/company-progress/:userId`
 
 ### LeetCode Integration
 

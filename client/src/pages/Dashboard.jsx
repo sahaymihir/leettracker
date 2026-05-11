@@ -58,7 +58,6 @@ export default function Dashboard() {
 
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [patternHeatmap, setPatternHeatmap] = useState(null);
-  const [companyProgress, setCompanyProgress] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -100,7 +99,6 @@ export default function Dashboard() {
 
         setStats(nextStats);
         setPatternHeatmap(nextStats.patternHeatmap || null);
-        setCompanyProgress(nextStats.companyProgress || null);
 
         if (Object.keys(initialHeatmapData).length > 0) {
           applyHeatmapData(initialHeatmapData);
@@ -284,35 +282,6 @@ export default function Dashboard() {
                   <div className="h-full rounded-full transition-all duration-500" style={{ 
                     width: `${p.total > 0 ? (p.solved / p.total) * 100 : 0}%`,
                     backgroundColor: p.percent >= 80 ? '#22c55e' : p.percent >= 50 ? '#3b82f6' : '#f97316'
-                  }}/>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Company Preparation */}
-      {companyProgress && companyProgress.length > 0 && (
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-xl font-bold text-white">Company Preparation</h2>
-            <p className="text-xs text-gray-500 mt-1 italic">Company tagging is based on community-reported data and may not be fully accurate.</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-            {companyProgress.slice(0, 10).map(c => (
-              <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-5 transition-all duration-300 hover:scale-[1.02] hover:bg-white/10 shadow-md shadow-black/20" key={c.company}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-semibold text-white truncate mr-2" title={c.company}>{c.company}</span>
-                  <span className="font-bold text-indigo-400">{c.percent}%</span>
-                </div>
-                <div className="text-xs text-gray-500 mb-3">
-                  {c.solved} / {c.total} solved
-                </div>
-                <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all duration-500" style={{ 
-                    width: `${c.percent}%`,
-                    backgroundColor: c.percent >= 80 ? '#22c55e' : c.percent >= 40 ? '#3b82f6' : '#a855f7'
                   }}/>
                 </div>
               </div>
