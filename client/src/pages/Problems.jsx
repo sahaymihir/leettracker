@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import api from '../api';
 import LeetCodeImport from '../components/LeetCodeImport';
+import TopicTags from '../components/TopicTags';
 import { getProblemTopics } from '../utils/problemFilters';
 
 const BULK_ADD_CONCURRENCY = 3;
@@ -431,15 +432,21 @@ export default function Problems() {
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-400">Sort by</span>
-          <select
-            className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-indigo-500 appearance-none bg-no-repeat bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M7%2010l5%205%205-5H7z%22%20fill%3D%22%23ffffff40%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_8px_center] pr-9"
-            value={sortBy}
-            onChange={e => setSortBy(e.target.value)}
-          >
-            <option value="number">Problem number</option>
-            <option value="recent">Recently solved</option>
-          </select>
+          <span className="text-sm text-gray-400">Sort</span>
+          <div className="inline-flex rounded-lg bg-black/40 border border-white/10 p-0.5">
+            <button
+              onClick={() => setSortBy('number')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${sortBy === 'number' ? 'bg-emerald-500/20 text-emerald-400' : 'text-gray-400 hover:text-white'}`}
+            >
+              Number
+            </button>
+            <button
+              onClick={() => setSortBy('recent')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${sortBy === 'recent' ? 'bg-emerald-500/20 text-emerald-400' : 'text-gray-400 hover:text-white'}`}
+            >
+              Recently solved
+            </button>
+          </div>
         </div>
       </div>
 
@@ -565,8 +572,6 @@ export default function Problems() {
             {visibleProblems.map((p) => {
               const topics = p.topics?.length ? p.topics : (p.pattern_name ? [p.pattern_name] : []);
               const hasExpandedTopics = expandedTopics[p.id];
-              const visibleTopics = hasExpandedTopics ? topics : topics.slice(0, 2);
-              const hiddenTopicsCount = Math.max(topics.length - visibleTopics.length, 0);
 
               return (
                 <div
@@ -593,38 +598,17 @@ export default function Problems() {
 
                   <div className="flex flex-wrap gap-2">
                     <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide uppercase border ${
-                      p.difficulty === 'Easy' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 
-                      p.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 
+                      p.difficulty === 'Easy' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                      p.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
                       'bg-red-500/10 text-red-400 border-red-500/20'
                     }`}>
                       {p.difficulty}
                     </span>
-                    {visibleTopics.map(topic => (
-                      <span
-                        className="px-2 py-0.5 rounded text-[11px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20"
-                        key={topic}
-                      >
-                        {topic}
-                      </span>
-                    ))}
-                    {hiddenTopicsCount > 0 && (
-                      <button
-                        type="button"
-                        className="px-2 py-0.5 rounded text-[11px] font-medium bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-colors"
-                        onClick={() => toggleExpandedTopics(p.id)}
-                      >
-                        +{hiddenTopicsCount} more
-                      </button>
-                    )}
-                    {hasExpandedTopics && topics.length > 2 && (
-                      <button
-                        type="button"
-                        className="px-2 py-0.5 rounded text-[11px] font-medium bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-colors"
-                        onClick={() => toggleExpandedTopics(p.id)}
-                      >
-                        Show less
-                      </button>
-                    )}
+                    <TopicTags
+                      topics={topics}
+                      expanded={hasExpandedTopics}
+                      onToggle={() => toggleExpandedTopics(p.id)}
+                    />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -682,8 +666,6 @@ export default function Problems() {
               {visibleProblems.map((p) => {
                 const topics = p.topics?.length ? p.topics : (p.pattern_name ? [p.pattern_name] : []);
                 const hasExpandedTopics = expandedTopics[p.id];
-                const visibleTopics = hasExpandedTopics ? topics : topics.slice(0, 2);
-                const hiddenTopicsCount = Math.max(topics.length - visibleTopics.length, 0);
 
                 return (
                   <div 
@@ -738,32 +720,11 @@ export default function Problems() {
                       </span>
                     </span>
                     <div className="flex flex-wrap gap-2 pr-2">
-                      {visibleTopics.map(topic => (
-                        <span
-                          className="px-2 py-0.5 rounded text-[11px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20"
-                          key={topic}
-                        >
-                          {topic}
-                        </span>
-                      ))}
-                      {hiddenTopicsCount > 0 && (
-                        <button
-                          type="button"
-                          className="px-2 py-0.5 rounded text-[11px] font-medium bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-colors"
-                          onClick={() => toggleExpandedTopics(p.id)}
-                        >
-                          +{hiddenTopicsCount} more
-                        </button>
-                      )}
-                      {hasExpandedTopics && topics.length > 2 && (
-                        <button
-                          type="button"
-                          className="px-2 py-0.5 rounded text-[11px] font-medium bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-colors"
-                          onClick={() => toggleExpandedTopics(p.id)}
-                        >
-                          Show less
-                        </button>
-                      )}
+                      <TopicTags
+                        topics={topics}
+                        expanded={hasExpandedTopics}
+                        onToggle={() => toggleExpandedTopics(p.id)}
+                      />
                     </div>
                     <div className="flex justify-center">
                       <button 

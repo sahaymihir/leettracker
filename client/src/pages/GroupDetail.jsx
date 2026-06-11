@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import AddFromProblemsetModal from '../components/groups/AddFromProblemsetModal';
+import TopicTags from '../components/TopicTags';
 import { getProblemTopics } from '../utils/problemFilters';
 
 const BULK_GROUP_ADD_CONCURRENCY = 3;
@@ -695,15 +696,21 @@ export default function GroupDetail() {
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-400">Sort by</span>
-          <select
-            className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-indigo-500 appearance-none bg-no-repeat bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M7%2010l5%205%205-5H7z%22%20fill%3D%22%23ffffff40%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_8px_center] pr-9"
-            value={sortBy}
-            onChange={e => setSortBy(e.target.value)}
-          >
-            <option value="number">Problem number</option>
-            <option value="recent">Recently solved</option>
-          </select>
+          <span className="text-sm text-gray-400">Sort</span>
+          <div className="inline-flex rounded-lg bg-black/40 border border-white/10 p-0.5">
+            <button
+              onClick={() => setSortBy('number')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${sortBy === 'number' ? 'bg-indigo-500/20 text-indigo-400' : 'text-gray-400 hover:text-white'}`}
+            >
+              Number
+            </button>
+            <button
+              onClick={() => setSortBy('recent')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${sortBy === 'recent' ? 'bg-indigo-500/20 text-indigo-400' : 'text-gray-400 hover:text-white'}`}
+            >
+              Recently solved
+            </button>
+          </div>
         </div>
       </div>
 
@@ -849,8 +856,6 @@ export default function GroupDetail() {
             {visibleProblems.map((p) => {
               const myStatus = p.member_statuses?.find(ms => ms.user_id === user?.id)?.status || 'unsolved';
               const hasExpandedTopics = expandedTopics[p.id];
-              const visibleTopics = hasExpandedTopics ? (p.topics || []) : (p.topics || []).slice(0, 2);
-              const hiddenTopicsCount = Math.max((p.topics || []).length - visibleTopics.length, 0);
 
               return (
                 <div
@@ -865,8 +870,8 @@ export default function GroupDetail() {
                       </a>
                     </div>
                     <span className={`px-2 py-0.5 rounded text-[11px] font-bold tracking-wide uppercase border inline-block ${
-                      p.difficulty === 'Easy' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 
-                      p.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 
+                      p.difficulty === 'Easy' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                      p.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
                       'bg-red-500/10 text-red-400 border-red-500/20'
                     }`}>
                       {p.difficulty}
@@ -874,38 +879,12 @@ export default function GroupDetail() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    {p.topics?.length ? (
-                      <>
-                        {visibleTopics.map(topic => (
-                          <span
-                            className="px-2 py-0.5 rounded text-[11px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20"
-                            key={topic}
-                          >
-                            {topic}
-                          </span>
-                        ))}
-                        {hiddenTopicsCount > 0 && (
-                          <button
-                            type="button"
-                            className="px-2 py-0.5 rounded text-[11px] font-medium bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-colors"
-                            onClick={() => toggleExpandedTopics(p.id)}
-                          >
-                            +{hiddenTopicsCount} more
-                          </button>
-                        )}
-                        {hasExpandedTopics && p.topics.length > 2 && (
-                          <button
-                            type="button"
-                            className="px-2 py-0.5 rounded text-[11px] font-medium bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-colors"
-                            onClick={() => toggleExpandedTopics(p.id)}
-                          >
-                            Show less
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-xs text-gray-500">No topics</span>
-                    )}
+                    <TopicTags
+                      topics={p.topics || []}
+                      expanded={hasExpandedTopics}
+                      onToggle={() => toggleExpandedTopics(p.id)}
+                      emptyLabel="No topics"
+                    />
                   </div>
 
                   <div className="space-y-3">
@@ -933,7 +912,7 @@ export default function GroupDetail() {
                 <span className="w-16 flex-shrink-0">#</span>
                 <span className="w-64 flex-shrink-0">Problem</span>
                 <span className="w-32 flex-shrink-0">Difficulty</span>
-                <span className="min-w-[360px] flex-1 pr-6">Topics</span>
+                <span className="min-w-[140px] flex-1 pr-6">Topics</span>
                 <div className="flex flex-none justify-end gap-6 pl-6">
                   {group.members?.map(m => (
                     <div className="w-24 flex-shrink-0 text-center" key={m.id} title={m.username}>
@@ -951,8 +930,6 @@ export default function GroupDetail() {
                 {visibleProblems.map((p) => {
                   const myStatus = p.member_statuses?.find(ms => ms.user_id === user?.id)?.status || 'unsolved';
                   const hasExpandedTopics = expandedTopics[p.id];
-                  const visibleTopics = hasExpandedTopics ? (p.topics || []) : (p.topics || []).slice(0, 2);
-                  const hiddenTopicsCount = Math.max((p.topics || []).length - visibleTopics.length, 0);
 
                   return (
                   <div 
@@ -974,39 +951,13 @@ export default function GroupDetail() {
                         {p.difficulty}
                       </span>
                     </span>
-                    <div className="min-w-[360px] flex-1 flex flex-wrap items-center gap-2 pr-6">
-                      {p.topics?.length ? (
-                        <>
-                          {visibleTopics.map(topic => (
-                            <span
-                              className="px-2 py-0.5 rounded text-[11px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20"
-                              key={topic}
-                            >
-                              {topic}
-                            </span>
-                          ))}
-                          {hiddenTopicsCount > 0 && (
-                            <button
-                              type="button"
-                              className="px-2 py-0.5 rounded text-[11px] font-medium bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-colors"
-                              onClick={() => toggleExpandedTopics(p.id)}
-                            >
-                              +{hiddenTopicsCount} more
-                            </button>
-                          )}
-                          {hasExpandedTopics && p.topics.length > 2 && (
-                            <button
-                              type="button"
-                              className="px-2 py-0.5 rounded text-[11px] font-medium bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-colors"
-                              onClick={() => toggleExpandedTopics(p.id)}
-                            >
-                              Show less
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-xs text-gray-500">No topics</span>
-                      )}
+                    <div className="min-w-[140px] flex-1 flex flex-wrap items-center gap-2 pr-6">
+                      <TopicTags
+                        topics={p.topics || []}
+                        expanded={hasExpandedTopics}
+                        onToggle={() => toggleExpandedTopics(p.id)}
+                        emptyLabel="No topics"
+                      />
                     </div>
                     <div className="flex flex-none justify-end gap-6 pl-6">
                       {p.member_statuses?.map(ms => (
