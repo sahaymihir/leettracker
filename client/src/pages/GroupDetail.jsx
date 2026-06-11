@@ -6,6 +6,7 @@ import AddFromProblemsetModal from '../components/groups/AddFromProblemsetModal'
 import { getProblemTopics } from '../utils/problemFilters';
 
 const BULK_GROUP_ADD_CONCURRENCY = 3;
+const PROBLEMS_PAGE_SIZE = 20;
 
 function createEmptyBulkProgress(total = 0) {
   return {
@@ -71,6 +72,8 @@ export default function GroupDetail() {
   const [difficultyFilter, setDifficultyFilter] = useState('');
   const [solvedFilter, setSolvedFilter] = useState('');
   const [groupStatusFilter, setGroupStatusFilter] = useState('');
+  const [sortBy, setSortBy] = useState('number');
+  const [visibleCount, setVisibleCount] = useState(PROBLEMS_PAGE_SIZE);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -109,16 +112,16 @@ export default function GroupDetail() {
   // Filter problems by active pattern and other filters
   const filteredProblems = useMemo(() => {
     if (!group?.problems) return [];
-    
-    return group.problems.filter(p => {
+
+    const filtered = group.problems.filter(p => {
       // Pattern filter
-      const matchPattern = activePattern === 'all' || 
+      const matchPattern = activePattern === 'all' ||
                            (p.topics?.includes(activePattern) || p.pattern_name === activePattern);
       if (!matchPattern) return false;
-      
+
       // Difficulty filter
       if (difficultyFilter && p.difficulty !== difficultyFilter) return false;
-      
+
       // Personal Status Filter (match behavior of Problems page)
       if (solvedFilter) {
         const myStatus = p.member_statuses?.find(ms => ms.user_id === user?.id)?.status || 'unsolved';
@@ -133,10 +136,38 @@ export default function GroupDetail() {
         if (groupStatusFilter === 'true' && !anySolved) return false;
         if (groupStatusFilter === 'false' && anySolved) return false;
       }
-      
+
       return true;
     });
-  }, [group, user, activePattern, difficultyFilter, solvedFilter, groupStatusFilter]);
+
+    if (sortBy === 'recent') {
+      // Most recently solved (by me) first; unsolved problems sink to the bottom.
+      const mySolvedAt = (p) => {
+        const mine = p.member_statuses?.find(ms => ms.user_id === user?.id);
+        return mine?.solvedAt ? new Date(mine.solvedAt).getTime() : 0;
+      };
+      filtered.sort((a, b) => {
+        const diff = mySolvedAt(b) - mySolvedAt(a);
+        if (diff !== 0) return diff;
+        return a.leetcode_number - b.leetcode_number;
+      });
+    } else {
+      filtered.sort((a, b) => a.leetcode_number - b.leetcode_number);
+    }
+
+    return filtered;
+  }, [group, user, activePattern, difficultyFilter, solvedFilter, groupStatusFilter, sortBy]);
+
+  // Reset pagination whenever the filtered/sorted result set changes.
+  useEffect(() => {
+    setVisibleCount(PROBLEMS_PAGE_SIZE);
+  }, [activePattern, difficultyFilter, solvedFilter, groupStatusFilter, sortBy]);
+
+  const visibleProblems = useMemo(
+    () => filteredProblems.slice(0, visibleCount),
+    [filteredProblems, visibleCount]
+  );
+  const hasMoreProblems = visibleCount < filteredProblems.length;
 
   const isGroupCreator = group?.created_by === user?.id;
   const bulkParseResult = useMemo(() => parseBulkProblemNumbers(bulkInput), [bulkInput]);
@@ -266,6 +297,7 @@ export default function GroupDetail() {
                     ...memberStatus,
                     status: nextStatus,
                     solved: nextStatus === 'solved' ? 1 : 0,
+                    solvedAt: nextStatus === 'solved' ? new Date().toISOString() : null,
                   }
                 : memberStatus
             )),
@@ -656,10 +688,24 @@ export default function GroupDetail() {
         ))}
       </div>
 
-      <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className="mb-6 mt-4 flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
-        <svg className={`w-4 h-4 transform transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-        Advanced Filters
-      </button>
+      <div className="mb-6 mt-4 flex flex-wrap items-center justify-between gap-3">
+        <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
+          <svg className={`w-4 h-4 transform transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+          Advanced Filters
+        </button>
+
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-400">Sort by</span>
+          <select
+            className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-indigo-500 appearance-none bg-no-repeat bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M7%2010l5%205%205-5H7z%22%20fill%3D%22%23ffffff40%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_8px_center] pr-9"
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value)}
+          >
+            <option value="number">Problem number</option>
+            <option value="recent">Recently solved</option>
+          </select>
+        </div>
+      </div>
 
       {/* Advanced Filter Panel */}
       {showAdvancedFilters && (
@@ -800,7 +846,7 @@ export default function GroupDetail() {
       ) : (
         <>
           <div className="md:hidden space-y-4">
-            {filteredProblems.map((p) => {
+            {visibleProblems.map((p) => {
               const myStatus = p.member_statuses?.find(ms => ms.user_id === user?.id)?.status || 'unsolved';
               const hasExpandedTopics = expandedTopics[p.id];
               const visibleTopics = hasExpandedTopics ? (p.topics || []) : (p.topics || []).slice(0, 2);
@@ -902,7 +948,7 @@ export default function GroupDetail() {
               </div>
               {/* Table Body */}
               <div className="divide-y divide-white/5">
-                {filteredProblems.map((p) => {
+                {visibleProblems.map((p) => {
                   const myStatus = p.member_statuses?.find(ms => ms.user_id === user?.id)?.status || 'unsolved';
                   const hasExpandedTopics = expandedTopics[p.id];
                   const visibleTopics = hasExpandedTopics ? (p.topics || []) : (p.topics || []).slice(0, 2);
@@ -976,6 +1022,20 @@ export default function GroupDetail() {
               </div>
             </div>
           </div>
+
+          {hasMoreProblems && (
+            <div className="flex flex-col items-center gap-2 pt-2">
+              <button
+                onClick={() => setVisibleCount(count => count + PROBLEMS_PAGE_SIZE)}
+                className="px-6 py-2.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all font-medium text-sm text-gray-200"
+              >
+                Show more
+              </button>
+              <span className="text-xs text-gray-500">
+                Showing {visibleProblems.length} of {filteredProblems.length}
+              </span>
+            </div>
+          )}
         </>
       )}
 

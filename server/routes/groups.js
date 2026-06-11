@@ -176,6 +176,7 @@ module.exports = function () {
               progressMap[lcNum] = {
                 solved: progress.solved || 0,
                 status: progress.status || (progress.solved === 1 ? 'solved' : 'unsolved'),
+                solvedAt: progress.solvedAt || null,
               };
             });
 
@@ -201,6 +202,7 @@ module.exports = function () {
               username: member.username,
               solved: progress ? progress.solved : 0,
               status: progress?.status || 'unsolved',
+              solvedAt: progress?.solvedAt || null,
             };
           });
 
