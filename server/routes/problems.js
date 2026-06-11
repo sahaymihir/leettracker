@@ -82,6 +82,8 @@ module.exports = function () {
           id: lcNum,
           solved: progress.solved || 0,
           status,
+          solvedAt: progress.solvedAt || null,
+          attemptedAt: progress.attemptedAt || null,
         };
       });
 
@@ -128,6 +130,8 @@ module.exports = function () {
             created_at: problem.createdAt,
             solved: progress.solved,
             status: progress.status,
+            solvedAt: progress.solvedAt,
+            attemptedAt: progress.attemptedAt,
             topics: datasetEntry ? (datasetEntry.topics || []) : [],
           };
         })

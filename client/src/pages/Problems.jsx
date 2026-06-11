@@ -4,6 +4,7 @@ import LeetCodeImport from '../components/LeetCodeImport';
 import { getProblemTopics } from '../utils/problemFilters';
 
 const BULK_ADD_CONCURRENCY = 3;
+const PROBLEMS_PAGE_SIZE = 20;
 
 function createEmptyBulkProgress(total = 0) {
   return {
@@ -58,6 +59,8 @@ export default function Problems() {
   const [activePattern, setActivePattern] = useState('all');
   const [difficultyFilter, setDifficultyFilter] = useState('');
   const [solvedFilter, setSolvedFilter] = useState('');
+  const [sortBy, setSortBy] = useState('number');
+  const [visibleCount, setVisibleCount] = useState(PROBLEMS_PAGE_SIZE);
   
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -103,8 +106,8 @@ export default function Problems() {
 
   // Apply filters on the frontend
   const problems = useMemo(() => {
-    return allProblems.filter(p => {
-      const matchPattern = activePattern === 'all' || 
+    const filtered = allProblems.filter(p => {
+      const matchPattern = activePattern === 'all' ||
                            (p.topics?.includes(activePattern) || p.pattern_name === activePattern);
       const matchDifficulty = !difficultyFilter || p.difficulty === difficultyFilter;
       const matchSolved = !solvedFilter
@@ -113,7 +116,32 @@ export default function Problems() {
         || (solvedFilter === 'attempted' && p.status === 'attempted');
       return matchPattern && matchDifficulty && matchSolved;
     });
-  }, [allProblems, activePattern, difficultyFilter, solvedFilter]);
+
+    if (sortBy === 'recent') {
+      // Most recently solved first; unsolved problems sink to the bottom.
+      filtered.sort((a, b) => {
+        const aTime = a.solvedAt ? new Date(a.solvedAt).getTime() : 0;
+        const bTime = b.solvedAt ? new Date(b.solvedAt).getTime() : 0;
+        if (aTime !== bTime) return bTime - aTime;
+        return getProblemNumber(a) - getProblemNumber(b);
+      });
+    } else {
+      filtered.sort((a, b) => getProblemNumber(a) - getProblemNumber(b));
+    }
+
+    return filtered;
+  }, [allProblems, activePattern, difficultyFilter, solvedFilter, sortBy]);
+
+  // Reset pagination whenever the filtered/sorted result set changes.
+  useEffect(() => {
+    setVisibleCount(PROBLEMS_PAGE_SIZE);
+  }, [activePattern, difficultyFilter, solvedFilter, sortBy]);
+
+  const visibleProblems = useMemo(
+    () => problems.slice(0, visibleCount),
+    [problems, visibleCount]
+  );
+  const hasMoreProblems = visibleCount < problems.length;
 
   const bulkParseResult = useMemo(() => parseBulkProblemNumbers(bulkInput), [bulkInput]);
   const bulkCompletionPercent = bulkProgress.total > 0
@@ -311,8 +339,15 @@ export default function Problems() {
   const handleSetStatus = async (problemId, nextStatus) => {
     try {
       const res = await api.post(`/problems/${problemId}/status`, { status: nextStatus });
-      setAllProblems(prev => prev.map(p => 
-        p.id === problemId ? { ...p, solved: res.data.solved, status: res.data.status } : p
+      setAllProblems(prev => prev.map(p =>
+        p.id === problemId
+          ? {
+              ...p,
+              solved: res.data.solved,
+              status: res.data.status,
+              solvedAt: res.data.status === 'solved' ? new Date().toISOString() : null,
+            }
+          : p
       ));
     } catch (err) {
       console.error(err);
@@ -389,10 +424,24 @@ export default function Problems() {
         ))}
       </div>
 
-      <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className="mb-6 flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
-        <svg className={`w-4 h-4 transform transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-        Advanced Filters
-      </button>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
+          <svg className={`w-4 h-4 transform transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+          Advanced Filters
+        </button>
+
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-400">Sort by</span>
+          <select
+            className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-indigo-500 appearance-none bg-no-repeat bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M7%2010l5%205%205-5H7z%22%20fill%3D%22%23ffffff40%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_8px_center] pr-9"
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value)}
+          >
+            <option value="number">Problem number</option>
+            <option value="recent">Recently solved</option>
+          </select>
+        </div>
+      </div>
 
       {/* Advanced Filter Panel */}
       {showAdvancedFilters && (
@@ -513,7 +562,7 @@ export default function Problems() {
       ) : (
         <>
           <div className="md:hidden space-y-4">
-            {problems.map((p) => {
+            {visibleProblems.map((p) => {
               const topics = p.topics?.length ? p.topics : (p.pattern_name ? [p.pattern_name] : []);
               const hasExpandedTopics = expandedTopics[p.id];
               const visibleTopics = hasExpandedTopics ? topics : topics.slice(0, 2);
@@ -630,7 +679,7 @@ export default function Problems() {
               <span className="text-center uppercase tracking-wider">Del</span>
             </div>
             <div className="divide-y divide-white/5">
-              {problems.map((p) => {
+              {visibleProblems.map((p) => {
                 const topics = p.topics?.length ? p.topics : (p.pattern_name ? [p.pattern_name] : []);
                 const hasExpandedTopics = expandedTopics[p.id];
                 const visibleTopics = hasExpandedTopics ? topics : topics.slice(0, 2);
@@ -732,6 +781,20 @@ export default function Problems() {
               })}
             </div>
           </div>
+
+          {hasMoreProblems && (
+            <div className="flex flex-col items-center gap-2 pt-2">
+              <button
+                onClick={() => setVisibleCount(count => count + PROBLEMS_PAGE_SIZE)}
+                className="px-6 py-2.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all font-medium text-sm text-gray-200"
+              >
+                Show more
+              </button>
+              <span className="text-xs text-gray-500">
+                Showing {visibleProblems.length} of {problems.length}
+              </span>
+            </div>
+          )}
         </>
       )}
 
