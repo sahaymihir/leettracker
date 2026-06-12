@@ -1,54 +1,50 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  Plus,
+  Search,
+  Loader2,
+  Trash2,
+  Check,
+  ChevronDown,
+  SlidersHorizontal,
+  RotateCcw,
+  FileQuestion,
+  Download,
+} from 'lucide-react';
 import api from '../api';
 import LeetCodeImport from '../components/LeetCodeImport';
 import TopicTags from '../components/TopicTags';
 import TopicFilterTabs from '../components/TopicFilterTabs';
-import { CARD, Button, DifficultyBadge } from '../components/ui/primitives';
 import { getProblemTopics } from '../utils/problemFilters';
+import { cn } from '../lib/utils';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Textarea } from '../components/ui/textarea';
+import { Label } from '../components/ui/label';
+import { Badge, DifficultyBadge } from '../components/ui/badge';
+import { Card } from '../components/ui/card';
+import { Skeleton } from '../components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '../components/ui/dialog';
+import { toast } from '../components/ui/use-toast';
+import {
+  StatusCheckbox,
+  FilterRow,
+  BulkResultsPanel,
+  BulkParseStats,
+  AddModeToggle,
+  parseBulkProblemNumbers,
+  createEmptyBulkProgress,
+} from '../components/problems/shared';
 
 const BULK_ADD_CONCURRENCY = 3;
 const PROBLEMS_PAGE_SIZE = 20;
-
-function createEmptyBulkProgress(total = 0) {
-  return {
-    total,
-    completed: 0,
-    added: 0,
-    skipped: 0,
-    failed: 0,
-  };
-}
-
-function parseBulkProblemNumbers(input) {
-  const tokens = input.split(/[,\s;]+/).map(token => token.trim()).filter(Boolean);
-  const seen = new Set();
-  const numbers = [];
-  const duplicates = [];
-  const invalidTokens = [];
-
-  tokens.forEach(token => {
-    if (!/^\d+$/.test(token)) {
-      invalidTokens.push(token);
-      return;
-    }
-
-    const number = Number(token);
-    if (!Number.isSafeInteger(number) || number <= 0) {
-      invalidTokens.push(token);
-      return;
-    }
-
-    if (seen.has(number)) {
-      duplicates.push(number);
-      return;
-    }
-
-    seen.add(number);
-    numbers.push(number);
-  });
-
-  return { tokens, numbers, duplicates, invalidTokens };
-}
 
 function getProblemNumber(problem) {
   return Number(problem?.leetcode_number ?? problem?.id);
@@ -64,11 +60,12 @@ export default function Problems() {
   const [solvedFilter, setSolvedFilter] = useState('');
   const [sortBy, setSortBy] = useState('number');
   const [visibleCount, setVisibleCount] = useState(PROBLEMS_PAGE_SIZE);
-  
+
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
-  
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -194,9 +191,9 @@ export default function Problems() {
     setSearchQuery(query);
     setPreview(null);
     setAddError('');
-    
+
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    
+
     if (!query.trim()) {
       setSearchResults([]);
       setIsSearching(false);
@@ -232,13 +229,14 @@ export default function Problems() {
     if (!preview) return;
     setAddError('');
     try {
-      const res = await api.post('/problems', { 
+      const res = await api.post('/problems', {
         leetcode_number: preview.number,
         title: preview.title,
         difficulty: preview.difficulty,
         pattern_name: preview.topics?.[0] || null
       });
       addProblemToList(res.data);
+      toast({ title: 'Problem added', description: `#${preview.number} ${preview.title}`, variant: 'success' });
       closeAddModal();
     } catch (err) {
       setAddError(err.response?.data?.error || 'Failed to add problem');
@@ -358,17 +356,21 @@ export default function Problems() {
       ));
     } catch (err) {
       console.error(err);
+      toast({ title: 'Failed to update status', variant: 'destructive' });
     }
   };
 
-  const handleDelete = async (problemId, problemTitle) => {
-    if (window.confirm(`Are you sure you want to delete "${problemTitle}" from the tracker?`)) {
-      try {
-        await api.delete(`/problems/${problemId}`);
-        setAllProblems(prev => prev.filter(p => p.id !== problemId));
-      } catch (err) {
-        console.error('Failed to delete problem', err);
-      }
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await api.delete(`/problems/${deleteTarget.id}`);
+      setAllProblems(prev => prev.filter(p => p.id !== deleteTarget.id));
+      toast({ title: 'Problem deleted', description: deleteTarget.title });
+    } catch (err) {
+      console.error('Failed to delete problem', err);
+      toast({ title: 'Failed to delete problem', variant: 'destructive' });
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -379,36 +381,34 @@ export default function Problems() {
     }));
   };
 
+  const solvedCount = problems.filter(p => p.status === 'solved').length;
+  const attemptedCount = problems.filter(p => p.status === 'attempted').length;
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 pb-24 md:pb-12 space-y-8">
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 animate-fade-in">
         <div>
           <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">Problems</h1>
-          <p className="text-gray-400 mt-2">
-            <span className="text-emerald-400 font-medium">{problems.filter(p => p.status === 'solved').length} solved</span>
-            <span className="text-gray-600"> · </span>
-            <span className="text-amber-400 font-medium">{problems.filter(p => p.status === 'attempted').length} attempted</span>
-            <span className="text-gray-600"> · </span>
+          <p className="text-muted-foreground mt-2">
+            <span className="text-emerald-400 font-medium">{solvedCount} solved</span>
+            <span className="text-muted-foreground/50"> · </span>
+            <span className="text-amber-400 font-medium">{attemptedCount} attempted</span>
+            <span className="text-muted-foreground/50"> · </span>
             {problems.length} total
             {activePattern !== 'all' && ` in ${activePattern}`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="subtle" onClick={() => setShowImportModal(true)}>
-            <svg className="w-5 h-5 text-[#FFA116]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
+          <Button variant="outline" onClick={() => setShowImportModal(true)}>
+            <Download className="h-4 w-4 text-[#FFA116]" />
             Import from LeetCode
           </Button>
-          <Button variant="primary" onClick={() => setShowAddModal(true)}>
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
+          <Button onClick={() => setShowAddModal(true)}>
+            <Plus className="h-4 w-4" />
             Add Problem
           </Button>
         </div>
       </header>
-
 
       {/* Dynamic Pattern Tabs */}
       <TopicFilterTabs
@@ -419,23 +419,35 @@ export default function Problems() {
       />
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
-          <svg className={`w-4 h-4 transform transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+          className="gap-2"
+        >
+          <SlidersHorizontal className="w-4 h-4" />
           Advanced Filters
-        </button>
+          <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', showAdvancedFilters && 'rotate-180')} />
+        </Button>
 
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-400">Sort</span>
+          <span className="text-sm text-muted-foreground">Sort</span>
           <div className="inline-flex rounded-lg bg-black/40 border border-white/10 p-0.5">
             <button
               onClick={() => setSortBy('number')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${sortBy === 'number' ? 'bg-emerald-500/20 text-emerald-400' : 'text-gray-400 hover:text-white'}`}
+              className={cn(
+                'px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+                sortBy === 'number' ? 'bg-emerald-500/20 text-emerald-400' : 'text-muted-foreground hover:text-white'
+              )}
             >
               Number
             </button>
             <button
               onClick={() => setSortBy('recent')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${sortBy === 'recent' ? 'bg-emerald-500/20 text-emerald-400' : 'text-gray-400 hover:text-white'}`}
+              className={cn(
+                'px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+                sortBy === 'recent' ? 'bg-emerald-500/20 text-emerald-400' : 'text-muted-foreground hover:text-white'
+              )}
             >
               Recently solved
             </button>
@@ -445,158 +457,117 @@ export default function Problems() {
 
       {/* Advanced Filter Panel */}
       {showAdvancedFilters && (
-      <div className="bg-white/5 border border-white/10 rounded-xl p-5 mb-6 shadow-lg shadow-black/20 animate-fade-in">
-        <h3 className="text-sm font-medium text-gray-300 mb-4 flex items-center gap-2">
-          Match <span className="bg-black/50 px-2 py-1 rounded text-white border border-white/10">All</span> of the following filters:
-        </h3>
-        
-        <div className="space-y-3">
-          {/* Status Filter */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full group">
-            <div className="flex items-center gap-2 w-32 flex-shrink-0 text-gray-400">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-              </svg>
-              <span className="text-sm">Status</span>
-            </div>
-            <div className="flex items-center bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-300 w-24 flex-shrink-0">
-              <span>is</span>
-              <svg className="w-3 h-3 ml-auto opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </div>
-            <select 
-              className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-indigo-500 appearance-none bg-no-repeat bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M7%2010l5%205%205-5H7z%22%20fill%3D%22%23ffffff40%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_8px_center] pr-10"
-              value={solvedFilter} 
-              onChange={e => setSolvedFilter(e.target.value)}
-            >
-              <option value="">Any Status</option>
-              <option value="true">Solved</option>
-              <option value="attempted">Attempted</option>
-              <option value="false">Unsolved</option>
-            </select>
-            <button className="p-1.5 text-gray-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" onClick={() => setSolvedFilter('')}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
-            </button>
+        <Card className="p-5 mb-6 animate-fade-in">
+          <h3 className="text-sm font-medium text-gray-300 mb-4 flex items-center gap-2">
+            Match <Badge variant="secondary">All</Badge> of the following filters:
+          </h3>
+
+          <div className="space-y-3">
+            <FilterRow
+              label="Status"
+              Icon={Check}
+              value={solvedFilter}
+              onChange={setSolvedFilter}
+              onClear={() => setSolvedFilter('')}
+              placeholder="Any Status"
+              options={[
+                { value: 'true', label: 'Solved' },
+                { value: 'attempted', label: 'Attempted' },
+                { value: 'false', label: 'Unsolved' },
+              ]}
+            />
+            <FilterRow
+              label="Difficulty"
+              Icon={SlidersHorizontal}
+              value={difficultyFilter}
+              onChange={setDifficultyFilter}
+              onClear={() => setDifficultyFilter('')}
+              placeholder="Any Difficulty"
+              options={[
+                { value: 'Easy', label: 'Easy' },
+                { value: 'Medium', label: 'Medium' },
+                { value: 'Hard', label: 'Hard' },
+              ]}
+            />
+            <FilterRow
+              label="Topics"
+              Icon={FileQuestion}
+              value={activePattern === 'all' ? '' : activePattern}
+              onChange={(v) => setActivePattern(v || 'all')}
+              onClear={() => setActivePattern('all')}
+              placeholder="Any Topic"
+              options={dynamicPatterns.map(p => ({ value: p, label: p }))}
+            />
           </div>
 
-          {/* Difficulty Filter */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full group">
-            <div className="flex items-center gap-2 w-32 flex-shrink-0 text-gray-400">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-              </svg>
-              <span className="text-sm">Difficulty</span>
-            </div>
-            <div className="flex items-center bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-300 w-24 flex-shrink-0">
-              <span>is</span>
-              <svg className="w-3 h-3 ml-auto opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </div>
-            <select 
-              className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-indigo-500 appearance-none bg-no-repeat bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M7%2010l5%205%205-5H7z%22%20fill%3D%22%23ffffff40%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_8px_center] pr-10"
-              value={difficultyFilter} 
-              onChange={e => setDifficultyFilter(e.target.value)}
+          <div className="mt-6 flex justify-end items-center border-t border-white/10 pt-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setDifficultyFilter(''); setSolvedFilter(''); setActivePattern('all'); }}
             >
-              <option value="">Any Difficulty</option>
-              <option value="Easy">Easy</option>
-              <option value="Medium">Medium</option>
-              <option value="Hard">Hard</option>
-            </select>
-            <button className="p-1.5 text-gray-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" onClick={() => setDifficultyFilter('')}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
-            </button>
+              <RotateCcw className="w-3.5 h-3.5" />
+              Reset
+            </Button>
           </div>
-
-          {/* Topics Filter */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full group">
-            <div className="flex items-center gap-2 w-32 flex-shrink-0 text-gray-400">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6Z" />
-              </svg>
-              <span className="text-sm">Topics</span>
-            </div>
-            <div className="flex items-center bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-300 w-24 flex-shrink-0">
-              <span>is</span>
-              <svg className="w-3 h-3 ml-auto opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </div>
-            <select 
-              className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-indigo-500 appearance-none bg-no-repeat bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M7%2010l5%205%205-5H7z%22%20fill%3D%22%23ffffff40%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_8px_center] pr-10"
-              value={activePattern === 'all' ? '' : activePattern} 
-              onChange={e => setActivePattern(e.target.value || 'all')}
-            >
-              <option value="">Any Topic</option>
-              {dynamicPatterns.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-            <button className="p-1.5 text-gray-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" onClick={() => setActivePattern('all')}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
-            </button>
-          </div>
-
-        </div>
-        
-        <div className="mt-6 flex justify-end items-center border-t border-white/10 pt-4">
-          <button 
-            className="text-gray-400 hover:text-white font-medium text-sm flex items-center gap-2 transition-colors"
-            onClick={() => { setDifficultyFilter(''); setSolvedFilter(''); setActivePattern('all'); }}
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-            Reset
-          </button>
-        </div>
-      </div>
+        </Card>
       )}
 
       {/* Problem List */}
       {loading ? (
-        <div className="flex items-center justify-center min-h-[300px] text-gray-400">Loading problems...</div>
-      ) : problems.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-12 flex flex-col items-center justify-center text-center">
-          <svg className="w-16 h-16 text-gray-600 mb-6" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-          </svg>
-          <h3 className="text-xl font-semibold text-white mb-2">No problems found</h3>
-          <p className="text-gray-400 mb-6">Add your first problem or adjust your filters.</p>
-          <button className="btn btn-primary bg-white text-black hover:bg-gray-200 px-6 py-2 rounded-lg font-medium transition-colors" onClick={() => setShowAddModal(true)}>
-            Add Problem
-          </button>
+        <div className="space-y-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 rounded-2xl" />
+          ))}
         </div>
+      ) : problems.length === 0 ? (
+        <Card className="p-12 flex flex-col items-center justify-center text-center">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mb-5">
+            <FileQuestion className="w-7 h-7" />
+          </div>
+          <h3 className="text-xl font-semibold text-white mb-2">No problems found</h3>
+          <p className="text-muted-foreground mb-6">Add your first problem or adjust your filters.</p>
+          <Button onClick={() => setShowAddModal(true)}>
+            <Plus className="h-4 w-4" />
+            Add Problem
+          </Button>
+        </Card>
       ) : (
         <>
+          {/* Mobile cards */}
           <div className="md:hidden space-y-4">
             {visibleProblems.map((p) => {
               const topics = p.topics?.length ? p.topics : (p.pattern_name ? [p.pattern_name] : []);
               const hasExpandedTopics = expandedTopics[p.id];
 
               return (
-                <div
-                  className={`rounded-2xl border border-white/10 bg-black/20 backdrop-blur-md p-4 space-y-4 ${p.status === 'solved' ? 'bg-green-500/[0.03]' : p.status === 'attempted' ? 'bg-yellow-500/[0.03]' : ''}`}
+                <Card
+                  className={cn(
+                    'p-4 space-y-4',
+                    p.status === 'solved' ? 'bg-emerald-500/[0.03]' : p.status === 'attempted' ? 'bg-amber-500/[0.03]' : ''
+                  )}
                   key={p.id}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="font-mono text-xs text-gray-500 mb-1">#{p.leetcode_number}</div>
-                      <a href={p.url} target="_blank" rel="noopener noreferrer" className="font-medium text-gray-100 hover:text-indigo-400 transition-colors block">
+                      <div className="font-mono text-xs text-muted-foreground mb-1">#{p.leetcode_number}</div>
+                      <a href={p.url} target="_blank" rel="noopener noreferrer" className="font-medium text-gray-100 hover:text-emerald-400 transition-colors block">
                         {p.title}
                       </a>
                     </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.title); }}
-                      className="p-2 text-gray-600 hover:text-red-500 transition-colors hover:bg-red-500/10 rounded-md"
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: p.id, title: p.title }); }}
                       title="Delete problem"
                     >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                      </svg>
-                    </button>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide uppercase border ${
-                      p.difficulty === 'Easy' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
-                      p.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
-                      'bg-red-500/10 text-red-400 border-red-500/20'
-                    }`}>
-                      {p.difficulty}
-                    </span>
+                    <DifficultyBadge difficulty={p.difficulty} />
                     <TopicTags
                       topics={topics}
                       expanded={hasExpandedTopics}
@@ -606,111 +577,87 @@ export default function Problems() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <button
-                      className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all ${
+                      className={cn(
+                        'flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all',
                         p.status === 'attempted'
-                          ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300'
+                          ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
                           : 'bg-white/5 border-white/10 text-gray-300'
-                      }`}
+                      )}
                       onClick={() => handleSetStatus(p.id, p.status === 'attempted' ? 'unsolved' : 'attempted')}
                     >
-                      <span className={`w-4 h-4 rounded border flex items-center justify-center ${p.status === 'attempted' ? 'border-yellow-400' : 'border-white/20'}`}>
-                        {p.status === 'attempted' && (
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                          </svg>
-                        )}
+                      <span className={cn('w-4 h-4 rounded border flex items-center justify-center', p.status === 'attempted' ? 'border-amber-400' : 'border-white/20')}>
+                        {p.status === 'attempted' && <Check className="w-3 h-3" strokeWidth={3} />}
                       </span>
                       Attempted
                     </button>
                     <button
-                      className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all ${
+                      className={cn(
+                        'flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all',
                         p.status === 'solved'
-                          ? 'bg-green-500 border-green-500 text-black'
+                          ? 'bg-emerald-500 border-emerald-500 text-black'
                           : 'bg-white/5 border-white/10 text-gray-300'
-                      }`}
+                      )}
                       onClick={() => handleSetStatus(p.id, p.status === 'solved' ? 'unsolved' : 'solved')}
                     >
-                      <span className={`w-4 h-4 rounded border flex items-center justify-center ${p.status === 'solved' ? 'border-black/20' : 'border-white/20'}`}>
-                        {p.status === 'solved' && (
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                          </svg>
-                        )}
+                      <span className={cn('w-4 h-4 rounded border flex items-center justify-center', p.status === 'solved' ? 'border-black/20' : 'border-white/20')}>
+                        {p.status === 'solved' && <Check className="w-3 h-3" strokeWidth={3} />}
                       </span>
                       Solved
                     </button>
                   </div>
-                </div>
+                </Card>
               );
             })}
           </div>
 
-          <div className="hidden md:block rounded-2xl border border-white/10 bg-black/20 backdrop-blur-md overflow-hidden">
-            <div className="grid grid-cols-[128px_128px_60px_minmax(220px,1fr)_100px_minmax(150px,1fr)_48px] gap-4 p-4 border-b border-white/10 text-[11px] font-semibold text-gray-400 bg-white/5">
-              <span className="text-center whitespace-nowrap">Attempted</span>
-              <span className="text-center whitespace-nowrap">Solved</span>
-              <span className="uppercase tracking-wider">#</span>
-              <span className="uppercase tracking-wider">Title</span>
-              <span className="uppercase tracking-wider">Difficulty</span>
-              <span className="uppercase tracking-wider">Topics</span>
-              <span className="text-center uppercase tracking-wider">Del</span>
+          {/* Desktop table */}
+          <Card className="hidden md:block overflow-hidden">
+            <div className="grid grid-cols-[110px_110px_60px_minmax(220px,1fr)_100px_minmax(150px,1fr)_48px] gap-4 p-4 border-b border-white/[0.08] text-[11px] font-semibold text-muted-foreground bg-white/[0.03] uppercase tracking-wider">
+              <span className="text-center">Attempted</span>
+              <span className="text-center">Solved</span>
+              <span>#</span>
+              <span>Title</span>
+              <span>Difficulty</span>
+              <span>Topics</span>
+              <span className="text-center">Del</span>
             </div>
-            <div className="divide-y divide-white/5">
+            <div className="divide-y divide-white/[0.04]">
               {visibleProblems.map((p) => {
                 const topics = p.topics?.length ? p.topics : (p.pattern_name ? [p.pattern_name] : []);
                 const hasExpandedTopics = expandedTopics[p.id];
 
                 return (
-                  <div 
-                    className={`grid grid-cols-[128px_128px_60px_minmax(220px,1fr)_100px_minmax(150px,1fr)_48px] gap-4 p-4 items-center transition-all duration-200 hover:bg-white/5 ${p.status === 'solved' ? 'bg-green-500/[0.02]' : p.status === 'attempted' ? 'bg-yellow-500/[0.02]' : ''}`} 
+                  <div
+                    className={cn(
+                      'grid grid-cols-[110px_110px_60px_minmax(220px,1fr)_100px_minmax(150px,1fr)_48px] gap-4 p-4 items-center transition-colors hover:bg-white/[0.04]',
+                      p.status === 'solved' ? 'bg-emerald-500/[0.02]' : p.status === 'attempted' ? 'bg-amber-500/[0.02]' : ''
+                    )}
                     key={p.id}
                   >
                     <div className="flex justify-center flex-shrink-0">
-                      <button 
-                        className={`w-6 h-6 rounded flex items-center justify-center transition-all ${
-                          p.status === 'attempted' ? 'bg-yellow-500/20 border border-yellow-500/50 text-yellow-300' : 
-                          'bg-white/5 border border-white/20 text-transparent hover:border-white/40'
-                        }`}
+                      <StatusCheckbox
+                        active={p.status === 'attempted'}
+                        kind="attempted"
                         onClick={() => handleSetStatus(p.id, p.status === 'attempted' ? 'unsolved' : 'attempted')}
                         title={p.status === 'attempted' ? 'Mark unattempted' : 'Mark attempted'}
-                      >
-                        {p.status === 'attempted' && (
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                          </svg>
-                        )}
-                      </button>
+                      />
                     </div>
                     <div className="flex justify-center flex-shrink-0">
-                      <button 
-                        className={`w-6 h-6 rounded flex items-center justify-center transition-all ${
-                          p.status === 'solved' ? 'bg-green-500 border border-green-500 text-black' : 
-                          'bg-white/5 border border-white/20 text-transparent hover:border-white/40'
-                        }`}
+                      <StatusCheckbox
+                        active={p.status === 'solved'}
+                        kind="solved"
                         onClick={() => handleSetStatus(p.id, p.status === 'solved' ? 'unsolved' : 'solved')}
                         title={p.status === 'solved' ? 'Mark unsolved' : 'Mark solved'}
-                      >
-                        {p.status === 'solved' && (
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                          </svg>
-                        )}
-                      </button>
+                      />
                     </div>
-                    <span className="font-mono text-gray-500">#{p.leetcode_number}</span>
+                    <span className="font-mono text-muted-foreground text-sm">#{p.leetcode_number}</span>
                     <span className="truncate">
-                      <a href={p.url} target="_blank" rel="noopener noreferrer" className="font-medium text-gray-200 hover:text-indigo-400 transition-colors">
+                      <a href={p.url} target="_blank" rel="noopener noreferrer" className="font-medium text-gray-200 hover:text-emerald-400 transition-colors">
                         {p.title}
                       </a>
                     </span>
                     <span>
-                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide uppercase border ${
-                        p.difficulty === 'Easy' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 
-                        p.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 
-                        'bg-red-500/10 text-red-400 border-red-500/20'
-                      }`}>
-                        {p.difficulty}
-                      </span>
+                      <DifficultyBadge difficulty={p.difficulty} />
                     </span>
                     <div className="flex flex-wrap gap-2 pr-2">
                       <TopicTags
@@ -720,31 +667,28 @@ export default function Problems() {
                       />
                     </div>
                     <div className="flex justify-center">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.title); }} 
-                        className="p-1.5 text-gray-600 hover:text-red-500 transition-colors hover:bg-red-500/10 rounded-md" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground/60 hover:text-rose-400 hover:bg-rose-500/10"
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: p.id, title: p.title }); }}
                         title="Delete problem"
                       >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                        </svg>
-                      </button>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
                 );
               })}
             </div>
-          </div>
+          </Card>
 
           {hasMoreProblems && (
             <div className="flex flex-col items-center gap-2 pt-2">
-              <button
-                onClick={() => setVisibleCount(count => count + PROBLEMS_PAGE_SIZE)}
-                className="px-6 py-2.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all font-medium text-sm text-gray-200"
-              >
+              <Button variant="outline" onClick={() => setVisibleCount(count => count + PROBLEMS_PAGE_SIZE)}>
                 Show more
-              </button>
-              <span className="text-xs text-gray-500">
+              </Button>
+              <span className="text-xs text-muted-foreground">
                 Showing {visibleProblems.length} of {problems.length}
               </span>
             </div>
@@ -752,303 +696,185 @@ export default function Problems() {
         </>
       )}
 
-      {/* Add Problem Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4" onClick={closeAddModal}>
-          <div className="bg-neutral-900 border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl relative max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-white/10 flex-shrink-0">
-              <h2 className="text-xl font-bold text-white">Add Problem</h2>
-              <button
-                type="button"
-                onClick={closeAddModal}
-                disabled={isBulkAdding}
-                className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Close"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
+      {/* Add Problem Dialog */}
+      <Dialog open={showAddModal} onOpenChange={(open) => { if (!open) closeAddModal(); }}>
+        <DialogContent className="max-w-lg p-0 gap-0">
+          <DialogHeader className="px-6 py-5 border-b border-white/[0.08]">
+            <DialogTitle>Add Problem</DialogTitle>
+            <DialogDescription>Track a new LeetCode problem in your list.</DialogDescription>
+          </DialogHeader>
 
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              <div className="grid grid-cols-2 gap-1 rounded-xl bg-black/40 border border-white/10 p-1">
-                <button
-                  type="button"
-                  className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                    addMode === 'single'
-                      ? 'bg-white text-black shadow'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'
-                  } ${isBulkAdding ? 'cursor-not-allowed opacity-60' : ''}`}
-                  onClick={() => {
-                    if (isBulkAdding) return;
-                    setAddMode('single');
-                    setBulkError('');
-                  }}
-                  disabled={isBulkAdding}
-                >
-                  Single
-                </button>
-                <button
-                  type="button"
-                  className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                    addMode === 'bulk'
-                      ? 'bg-white text-black shadow'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'
-                  } ${isBulkAdding ? 'cursor-not-allowed opacity-60' : ''}`}
-                  onClick={() => {
-                    if (isBulkAdding) return;
-                    setAddMode('bulk');
-                    setAddError('');
-                  }}
-                  disabled={isBulkAdding}
-                >
-                  Bulk
-                </button>
-              </div>
+          <div className="px-6 py-5 space-y-4">
+            <AddModeToggle
+              addMode={addMode}
+              setAddMode={setAddMode}
+              isBulkAdding={isBulkAdding}
+              onSwitch={(mode) => {
+                if (mode === 'single') setBulkError('');
+                else setAddError('');
+              }}
+            />
 
-              {addMode === 'single' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">Search Title or #</label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={e => handleSearch(e.target.value)}
-                        placeholder="e.g. Two Sum..."
-                        className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-white pl-10 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-600"
-                        autoComplete="off"
-                      />
-                      <svg className="w-5 h-5 absolute left-3 top-3 text-gray-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-                      </svg>
-                      {isSearching && <span className="absolute right-3 top-2.5 text-indigo-400">
-                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                      </span>}
-                    </div>
-                    
-                    {searchResults.length > 0 && (
-                      <div className="absolute left-6 right-6 mt-1 bg-neutral-800 border border-white/10 rounded-lg shadow-xl overflow-hidden z-20 max-h-60 overflow-y-auto">
-                        {searchResults.map(res => (
-                          <div 
-                            key={res.number} 
-                            className="flex items-center gap-3 p-3 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-0"
-                            onClick={() => handleSelectProblem(res)}
-                          >
-                            <span className="text-gray-500 font-mono text-xs w-8">#{res.number}</span>
-                            <span className="font-medium text-gray-200 flex-1 truncate">{res.title}</span>
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                              res.difficulty === 'Easy' ? 'bg-blue-500/10 text-blue-400' : 
-                              res.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400' : 
-                              'bg-red-500/10 text-red-400'
-                            }`}>{res.difficulty}</span>
-                          </div>
-                        ))}
-                      </div>
+            {addMode === 'single' && (
+              <>
+                <div className="relative">
+                  <Label className="mb-2 block">Search Title or #</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
+                    <Input
+                      type="text"
+                      value={searchQuery}
+                      onChange={e => handleSearch(e.target.value)}
+                      placeholder="e.g. Two Sum..."
+                      className="pl-10"
+                      autoComplete="off"
+                    />
+                    {isSearching && (
+                      <Loader2 className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-emerald-400" />
                     )}
                   </div>
 
-                  {addError && <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{addError}</div>}
-
-                  {preview && (
-                    <div className="bg-white/5 border border-white/10 rounded-xl p-4 mt-4">
-                      <div className="font-medium text-white mb-2">{preview.title}</div>
-                      <div className="flex flex-wrap gap-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          preview.difficulty === 'Easy' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 
-                          preview.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 
-                          'bg-red-500/10 text-red-400 border-red-500/20'
-                        } border`}>{preview.difficulty}</span>
-                        {preview.topics && preview.topics.map(t => (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20" key={t}>{t}</span>
-                        ))}
-                      </div>
+                  {searchResults.length > 0 && (
+                    <div className="absolute left-0 right-0 mt-1.5 rounded-xl border border-white/10 bg-popover shadow-2xl shadow-black/60 overflow-hidden z-20 max-h-60 overflow-y-auto scrollbar-thin">
+                      {searchResults.map(res => (
+                        <button
+                          key={res.number}
+                          type="button"
+                          className="w-full flex items-center gap-3 p-3 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-0 text-left"
+                          onClick={() => handleSelectProblem(res)}
+                        >
+                          <span className="text-muted-foreground font-mono text-xs w-10 flex-shrink-0">#{res.number}</span>
+                          <span className="font-medium text-gray-200 flex-1 truncate text-sm">{res.title}</span>
+                          <DifficultyBadge difficulty={res.difficulty} />
+                        </button>
+                      ))}
                     </div>
                   )}
-                </>
-              )}
-
-              {addMode === 'bulk' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">LeetCode Question Numbers</label>
-                    <textarea
-                      value={bulkInput}
-                      onChange={e => {
-                        setBulkInput(e.target.value);
-                        setBulkError('');
-                        setBulkResults([]);
-                        setBulkProgress(createEmptyBulkProgress());
-                      }}
-                      disabled={isBulkAdding}
-                      rows={4}
-                      placeholder={`1, 2, 15\n49 53 121\n200; 206; 217`}
-                      className="w-full resize-none bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-600 disabled:opacity-60 disabled:cursor-not-allowed"
-                    />
-                  </div>
-
-                  {bulkInput.trim() && (
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="rounded-xl bg-white/5 border border-white/10 p-2.5">
-                        <div className="text-base font-bold text-white">{bulkParseResult.numbers.length}</div>
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500">Unique</div>
-                      </div>
-                      <div className="rounded-xl bg-white/5 border border-white/10 p-2.5">
-                        <div className="text-base font-bold text-yellow-400">{bulkParseResult.duplicates.length}</div>
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500">Duplicates</div>
-                      </div>
-                      <div className="rounded-xl bg-white/5 border border-white/10 p-2.5">
-                        <div className="text-base font-bold text-red-400">{bulkParseResult.invalidTokens.length}</div>
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500">Invalid</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {bulkError && <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{bulkError}</div>}
-
-                  {(bulkProgress.total > 0 || bulkResults.length > 0) && (
-                    <div className="rounded-xl bg-white/5 border border-white/10 p-3 space-y-3">
-                      {bulkProgress.total > 0 && (
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="font-medium text-white">
-                              {isBulkAdding ? 'Adding problems...' : 'Bulk add complete'}
-                            </span>
-                            <span className="text-gray-400">{bulkProgress.completed} / {bulkProgress.total}</span>
-                          </div>
-                          <div className="h-2 rounded-full bg-black/50 border border-white/10 overflow-hidden">
-                            <div
-                              className="h-full bg-green-500 transition-all duration-300"
-                              style={{ width: `${bulkCompletionPercent}%` }}
-                            />
-                          </div>
-                          <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                            <div className="rounded-lg bg-green-500/10 border border-green-500/20 px-2 py-2 text-green-400">
-                              {bulkProgress.added} added
-                            </div>
-                            <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/20 px-2 py-2 text-yellow-400">
-                              {bulkProgress.skipped} tracked
-                            </div>
-                            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-2 py-2 text-red-400">
-                              {bulkProgress.failed} failed
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {bulkResults.length > 0 && (
-                        <div className="max-h-32 overflow-y-auto divide-y divide-white/5 rounded-lg border border-white/10 bg-black/30">
-                          {bulkResults.map((result, index) => {
-                            const isGood = result.status === 'added';
-                            const isWarning = result.status === 'skipped' || result.status === 'duplicate';
-                            const badgeClass = isGood
-                              ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                              : isWarning
-                                ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
-                                : 'bg-red-500/10 text-red-400 border-red-500/20';
-                            const statusLabel = result.status === 'added'
-                              ? 'Added'
-                              : result.status === 'skipped'
-                                ? 'Tracked'
-                                : result.status === 'duplicate'
-                                  ? 'Duplicate'
-                                  : result.status === 'invalid'
-                                    ? 'Invalid'
-                                    : 'Failed';
-                            const label = result.number ? `#${result.number}` : result.token;
-
-                            return (
-                              <div key={`${result.status}-${label}-${index}`} className="flex items-center gap-3 px-3 py-2 text-sm">
-                                <span className="font-mono text-gray-500 w-16 flex-shrink-0 truncate">{label}</span>
-                                <span className="text-gray-300 flex-1 min-w-0 truncate">{result.title || result.message}</span>
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${badgeClass}`}>
-                                  {statusLabel}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-3 px-5 py-4 border-t border-white/10 bg-neutral-900 flex-shrink-0">
-              <button
-                className="px-4 py-2 rounded-lg border border-white/10 text-gray-300 font-medium hover:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={closeAddModal}
-                disabled={isBulkAdding}
-              >
-                {addMode === 'bulk' && bulkProgress.completed > 0 && !isBulkAdding ? 'Close' : 'Cancel'}
-              </button>
-              {addMode === 'single' ? (
-                <button 
-                  className="px-6 py-2 rounded-lg bg-white text-black font-medium hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" 
-                  onClick={handleAddProblem} 
-                  disabled={!preview}
-                >
-                  Save
-                </button>
-              ) : (
-                <button
-                  className="px-6 py-2 rounded-lg bg-white text-black font-medium hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-32"
-                  onClick={handleBulkAddProblems}
-                  disabled={isBulkAdding || bulkParseResult.numbers.length === 0}
-                >
-                  {isBulkAdding && (
-                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  )}
-                  {isBulkAdding ? 'Adding...' : 'Add Problems'}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-
-      {/* Connect LeetCode Modal */}
-      {showImportModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowImportModal(false)}>
-          <div className="bg-neutral-900 border border-white/10 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="bg-[#1c1c1c] p-6 border-b border-white/10 relative">
-              <button 
-                onClick={() => setShowImportModal(false)}
-                className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#FFA116]/10 flex items-center justify-center border border-[#FFA116]/20">
-                  <svg className="w-6 h-6 text-[#FFA116]" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M13.483 0a1.374 1.374 0 0 0-.961.438L7.116 6.226l-3.854 4.126a5.266 5.266 0 0 0-1.209 2.105 5.35 5.35 0 0 0-.125.513 5.527 5.527 0 0 0 .062 2.362 5.83 5.83 0 0 0 .349 1.017 5.939 5.939 0 0 0 1.271 1.541 5.995 5.995 0 0 0 .678.463 6.115 6.115 0 0 0 1.08.452 6.324 6.324 0 0 0 1.954.218 6.426 6.426 0 0 0 1.109-.134 6.55 6.55 0 0 0 1.97-.68 6.57 6.57 0 0 0 .445-.278 6.643 6.643 0 0 0 .848-.731l6.19-6.6a1.365 1.365 0 0 0 .408-.98 1.353 1.353 0 0 0-.411-.986l-2.092-2.228a1.354 1.354 0 0 0-.974-.423 1.366 1.366 0 0 0-.966.428l-5.694 6.07a1.27 1.27 0 0 1-.9.395 1.246 1.246 0 0 1-.892-.379l-1.636-1.742a1.26 1.26 0 0 1-.378-.893 1.278 1.278 0 0 1 .378-.9l6.305-6.721A1.368 1.368 0 0 0 13.483 0zm-2.866 12.815a1.362 1.362 0 0 0-.96.44l-2.24 2.39a1.351 1.351 0 0 0-.406.983c0 .359.135.703.385.962l2.366 2.516c.26.275.617.432.993.432.378 0 .736-.157.995-.432l2.253-2.396a1.354 1.354 0 0 0 .406-.983 1.34 1.34 0 0 0-.406-.968l-2.39-2.502a1.347 1.347 0 0 0-.996-.442z"></path>
-                  </svg>
                 </div>
+
+                {addError && (
+                  <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">{addError}</div>
+                )}
+
+                {preview && (
+                  <Card className="p-4 bg-white/[0.03]">
+                    <div className="font-medium text-white mb-2.5">
+                      <span className="font-mono text-xs text-muted-foreground mr-2">#{preview.number}</span>
+                      {preview.title}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <DifficultyBadge difficulty={preview.difficulty} />
+                      {preview.topics && preview.topics.map(t => (
+                        <Badge variant="topic" key={t}>{t}</Badge>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+              </>
+            )}
+
+            {addMode === 'bulk' && (
+              <>
                 <div>
-                  <h2 className="text-xl font-bold text-white leading-tight">Import from LeetCode</h2>
-                  <p className="text-gray-400 text-sm">Sync your submissions directly from your browser</p>
+                  <Label className="mb-2 block">LeetCode Question Numbers</Label>
+                  <Textarea
+                    value={bulkInput}
+                    onChange={e => {
+                      setBulkInput(e.target.value);
+                      setBulkError('');
+                      setBulkResults([]);
+                      setBulkProgress(createEmptyBulkProgress());
+                    }}
+                    disabled={isBulkAdding}
+                    rows={4}
+                    placeholder={`1, 2, 15\n49 53 121\n200; 206; 217`}
+                    className="resize-none font-mono"
+                  />
                 </div>
-              </div>
-            </div>
 
-            <div className="p-6">
-              <LeetCodeImport 
-                onSuccess={() => fetchProblems()} 
-                onCancel={() => setShowImportModal(false)}
-              />
+                {bulkInput.trim() && <BulkParseStats parseResult={bulkParseResult} />}
+
+                {bulkError && (
+                  <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">{bulkError}</div>
+                )}
+
+                <BulkResultsPanel
+                  bulkProgress={bulkProgress}
+                  bulkResults={bulkResults}
+                  isBulkAdding={isBulkAdding}
+                  bulkCompletionPercent={bulkCompletionPercent}
+                />
+              </>
+            )}
+          </div>
+
+          <DialogFooter className="px-6 py-4 border-t border-white/[0.08]">
+            <Button variant="outline" onClick={closeAddModal} disabled={isBulkAdding}>
+              {addMode === 'bulk' && bulkProgress.completed > 0 && !isBulkAdding ? 'Close' : 'Cancel'}
+            </Button>
+            {addMode === 'single' ? (
+              <Button onClick={handleAddProblem} disabled={!preview}>
+                <Plus className="h-4 w-4" />
+                Save
+              </Button>
+            ) : (
+              <Button
+                onClick={handleBulkAddProblems}
+                disabled={isBulkAdding || bulkParseResult.numbers.length === 0}
+                className="min-w-32"
+              >
+                {isBulkAdding && <Loader2 className="h-4 w-4 animate-spin" />}
+                {isBulkAdding ? 'Adding...' : 'Add Problems'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete problem?</DialogTitle>
+            <DialogDescription>
+              This removes <span className="text-foreground font-medium">"{deleteTarget?.title}"</span> from your tracker. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleConfirmDelete}>
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Connect LeetCode Dialog */}
+      <Dialog open={showImportModal} onOpenChange={setShowImportModal}>
+        <DialogContent className="max-w-lg p-0 gap-0">
+          <div className="bg-gradient-to-b from-[#FFA116]/[0.07] to-transparent px-6 py-5 border-b border-white/[0.08]">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-[#FFA116]/10 flex items-center justify-center border border-[#FFA116]/25 flex-shrink-0">
+                <svg className="w-6 h-6 text-[#FFA116]" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M13.483 0a1.374 1.374 0 0 0-.961.438L7.116 6.226l-3.854 4.126a5.266 5.266 0 0 0-1.209 2.105 5.35 5.35 0 0 0-.125.513 5.527 5.527 0 0 0 .062 2.362 5.83 5.83 0 0 0 .349 1.017 5.939 5.939 0 0 0 1.271 1.541 5.995 5.995 0 0 0 .678.463 6.115 6.115 0 0 0 1.08.452 6.324 6.324 0 0 0 1.954.218 6.426 6.426 0 0 0 1.109-.134 6.55 6.55 0 0 0 1.97-.68 6.57 6.57 0 0 0 .445-.278 6.643 6.643 0 0 0 .848-.731l6.19-6.6a1.365 1.365 0 0 0 .408-.98 1.353 1.353 0 0 0-.411-.986l-2.092-2.228a1.354 1.354 0 0 0-.974-.423 1.366 1.366 0 0 0-.966.428l-5.694 6.07a1.27 1.27 0 0 1-.9.395 1.246 1.246 0 0 1-.892-.379l-1.636-1.742a1.26 1.26 0 0 1-.378-.893 1.278 1.278 0 0 1 .378-.9l6.305-6.721A1.368 1.368 0 0 0 13.483 0zm-2.866 12.815a1.362 1.362 0 0 0-.96.44l-2.24 2.39a1.351 1.351 0 0 0-.406.983c0 .359.135.703.385.962l2.366 2.516c.26.275.617.432.993.432.378 0 .736-.157.995-.432l2.253-2.396a1.354 1.354 0 0 0 .406-.983 1.34 1.34 0 0 0-.406-.968l-2.39-2.502a1.347 1.347 0 0 0-.996-.442z"></path>
+                </svg>
+              </div>
+              <DialogHeader>
+                <DialogTitle>Import from LeetCode</DialogTitle>
+                <DialogDescription>Sync your submissions directly from your browser</DialogDescription>
+              </DialogHeader>
             </div>
           </div>
-        </div>
-      )}
+
+          <div className="px-6 py-5">
+            <LeetCodeImport
+              onSuccess={() => fetchProblems()}
+              onCancel={() => setShowImportModal(false)}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

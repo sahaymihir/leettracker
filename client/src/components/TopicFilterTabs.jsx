@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { cn } from '../lib/utils';
 
 const COLLAPSED_LIMIT = 8;
 
@@ -9,9 +10,9 @@ export default function TopicFilterTabs({ patterns = [], activePattern, onSelect
   const [expanded, setExpanded] = useState(false);
 
   const activeCls = accent === 'indigo'
-    ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30'
-    : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
-  const idleCls = 'bg-white/5 border-white/10 hover:bg-white/10 text-gray-300';
+    ? 'bg-indigo-500/15 text-indigo-400 border-indigo-500/40'
+    : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40';
+  const idleCls = 'bg-white/[0.03] border-white/10 hover:bg-white/[0.07] hover:border-white/20 text-gray-400 hover:text-gray-200';
 
   const canCollapse = patterns.length > COLLAPSED_LIMIT;
 
@@ -29,20 +30,23 @@ export default function TopicFilterTabs({ patterns = [], activePattern, onSelect
     <button
       key={value}
       onClick={() => onSelect(value)}
-      className={`rounded-xl px-4 py-2 border transition-all ${isActive ? activeCls : idleCls}`}
+      className={cn(
+        'rounded-full px-4 py-1.5 text-sm font-medium border transition-all',
+        isActive ? activeCls : idleCls
+      )}
     >
       {label}
     </button>
   );
 
   return (
-    <div className="flex flex-wrap gap-3 mb-4">
+    <div className="flex flex-wrap gap-2 mb-4">
       {tab('All', 'all', activePattern === 'all')}
       {visible.map(p => tab(p, p, activePattern === p))}
       {canCollapse && !expanded && hiddenCount > 0 && (
         <button
           onClick={() => setExpanded(true)}
-          className={`rounded-xl px-4 py-2 border transition-all ${idleCls}`}
+          className={cn('rounded-full px-4 py-1.5 text-sm font-medium border transition-all', idleCls)}
         >
           +{hiddenCount} more
         </button>
@@ -50,7 +54,7 @@ export default function TopicFilterTabs({ patterns = [], activePattern, onSelect
       {canCollapse && expanded && (
         <button
           onClick={() => setExpanded(false)}
-          className={`rounded-xl px-4 py-2 border transition-all ${idleCls}`}
+          className={cn('rounded-full px-4 py-1.5 text-sm font-medium border transition-all', idleCls)}
         >
           Show less
         </button>

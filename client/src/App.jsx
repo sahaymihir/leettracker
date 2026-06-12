@@ -1,8 +1,10 @@
 import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { AuthProvider } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
+import { Toaster } from './components/ui/toaster';
 
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
@@ -14,7 +16,8 @@ const Profile = lazy(() => import('./pages/Profile'));
 
 function PageFallback() {
   return (
-    <div className="flex items-center justify-center min-h-[50vh] text-gray-400">
+    <div className="flex items-center justify-center gap-2 min-h-[50vh] text-muted-foreground">
+      <Loader2 className="h-5 w-5 animate-spin" />
       Loading...
     </div>
   );
@@ -48,6 +51,7 @@ function App() {
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </Suspense>
+        <Toaster />
       </BrowserRouter>
     </AuthProvider>
   );

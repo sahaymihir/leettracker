@@ -26,4 +26,11 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+  {
+    // shadcn-style modules intentionally export variants/helpers next to components.
+    files: ['src/components/ui/**/*.{js,jsx}', 'src/components/problems/shared.jsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])
