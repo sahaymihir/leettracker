@@ -27,8 +27,13 @@ export default defineConfig([
     },
   },
   {
-    // shadcn-style modules intentionally export variants/helpers next to components.
-    files: ['src/shared/ui/**/*.{js,jsx}', 'src/shared/components/StatusControls.jsx'],
+    // shadcn-style modules intentionally export variants/helpers next to components,
+    // and the auth context file exports its context object alongside the provider.
+    files: [
+      'src/shared/ui/**/*.{js,jsx}',
+      'src/shared/components/StatusControls.jsx',
+      'src/features/auth/state/authContext.jsx',
+    ],
     rules: {
       'react-refresh/only-export-components': 'off',
     },
