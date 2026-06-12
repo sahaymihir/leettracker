@@ -1,46 +1,30 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { User, Loader2 } from 'lucide-react';
 import { useAuth } from '@/features/auth/hooks/useAuth';
-import * as authApi from '@/features/auth/services/authApi';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/shared/ui/card';
-import { toast } from '@/shared/ui/use-toast';
 
 const Profile = () => {
-  const { user, updateUser } = useAuth();
+  const { user, loading: saving, handleUpdateLeetcodeUsername } = useAuth();
   const [leetcodeUsername, setLeetcodeUsername] = useState(user?.leetcodeUsername || '');
-  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (user?.leetcodeUsername) {
-      setLeetcodeUsername(user.leetcodeUsername);
-    }
-  }, [user]);
-
-  const saveLeetCodeUsername = async (nextUsername) => {
-    const normalizedUsername = nextUsername.trim();
-    const res = await authApi.updateLeetcodeUsername(normalizedUsername);
-
-    if (updateUser) {
-      updateUser({ ...user, leetcodeUsername: res.data.leetcodeUsername });
-    }
-
-    setLeetcodeUsername(normalizedUsername);
-    return normalizedUsername;
-  };
+  // Keep the field in sync when the saved username arrives/changes from a
+  // background profile refresh — adjusting state during render instead of in an
+  // effect (https://react.dev/learn/you-might-not-need-an-effect). Tracking the
+  // last-synced server value means we only reset on a real change, never
+  // clobbering an in-progress edit on an unrelated re-render.
+  const [syncedUsername, setSyncedUsername] = useState(user?.leetcodeUsername || '');
+  if (user?.leetcodeUsername && user.leetcodeUsername !== syncedUsername) {
+    setSyncedUsername(user.leetcodeUsername);
+    setLeetcodeUsername(user.leetcodeUsername);
+  }
 
   const handleSave = async (e) => {
     e.preventDefault();
-    setSaving(true);
-    try {
-      await saveLeetCodeUsername(leetcodeUsername);
-      toast({ title: 'Settings saved', description: 'Your LeetCode username has been updated.', variant: 'success' });
-    } catch (err) {
-      toast({ title: 'Failed to save settings', description: err.response?.data?.error || '', variant: 'destructive' });
-    } finally {
-      setSaving(false);
+    if (await handleUpdateLeetcodeUsername(leetcodeUsername)) {
+      setLeetcodeUsername(leetcodeUsername.trim());
     }
   };
 

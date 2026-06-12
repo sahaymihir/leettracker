@@ -6,14 +6,11 @@ import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Card, CardContent, CardFooter } from '@/shared/ui/card';
-import { toast } from '@/shared/ui/use-toast';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { login, user } = useAuth();
+  const { user, loading, error, handleLogin } = useAuth();
   const navigate = useNavigate();
 
   if (user) {
@@ -22,16 +19,8 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      await login(email, password);
-      toast({ title: 'Welcome back!', description: 'Signed in successfully.', variant: 'success' });
+    if (await handleLogin({ email, password })) {
       navigate('/dashboard');
-    } catch (err) {
-      setError(err.response?.data?.error || 'Login failed');
-    } finally {
-      setLoading(false);
     }
   };
 

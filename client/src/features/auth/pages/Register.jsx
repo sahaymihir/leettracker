@@ -6,15 +6,12 @@ import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Card, CardContent, CardFooter } from '@/shared/ui/card';
-import { toast } from '@/shared/ui/use-toast';
 
 const Register = () => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { register, user } = useAuth();
+  const { user, loading, error, handleRegister } = useAuth();
   const navigate = useNavigate();
 
   if (user) {
@@ -23,16 +20,8 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      await register(username, email, password);
-      toast({ title: 'Account created!', description: 'Welcome to LeetTracker.', variant: 'success' });
+    if (await handleRegister({ username, email, password })) {
       navigate('/dashboard');
-    } catch (err) {
-      setError(err.response?.data?.error || 'Registration failed');
-    } finally {
-      setLoading(false);
     }
   };
 

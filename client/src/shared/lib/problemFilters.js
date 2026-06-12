@@ -1,3 +1,7 @@
+export function getProblemNumber(problem) {
+  return Number(problem?.leetcode_number ?? problem?.id);
+}
+
 export function getProblemTopics(problems = []) {
   const topicSet = new Set();
 
