@@ -1,9 +1,9 @@
 import { Tag, Minus } from 'lucide-react';
-import { Badge } from './ui/badge';
+import { Badge } from '@/shared/ui/badge';
 
 // Compact, collapsible topic tags. Collapsed by default to a single count pill
 // so the topics never dominate a problem row; expands inline on click.
-export default function TopicTags({ topics = [], expanded, onToggle, emptyLabel }) {
+const TopicTags = ({ topics = [], expanded, onToggle, emptyLabel }) => {
   if (!topics.length) {
     return emptyLabel ? <span className="text-xs text-muted-foreground">{emptyLabel}</span> : null;
   }
@@ -37,4 +37,6 @@ export default function TopicTags({ topics = [], expanded, onToggle, emptyLabel 
       </button>
     </>
   );
-}
+};
+
+export default TopicTags;

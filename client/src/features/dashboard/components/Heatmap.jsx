@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, useMemo } from "react";
 
-export default function Heatmap({ data = {}, year = new Date().getFullYear() }) {
+const Heatmap = ({ data = {}, year = new Date().getFullYear() }) => {
   const containerRef = useRef(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [tooltip, setTooltip] = useState({ show: false, text: '', x: 0, y: 0 });
@@ -234,4 +234,6 @@ export default function Heatmap({ data = {}, year = new Date().getFullYear() }) 
       )}
     </div>
   );
-}
+};
+
+export default Heatmap;

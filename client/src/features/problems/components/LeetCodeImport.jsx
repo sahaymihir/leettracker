@@ -13,17 +13,19 @@ import {
   ArrowRight,
   Copy,
 } from 'lucide-react';
-import api from '../api';
-import { useAuth } from '../context/AuthContext';
-import { cn } from '../lib/utils';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Textarea } from './ui/textarea';
-import { toast } from './ui/use-toast';
+import { syncLeetcode, importLeetcode } from '@/features/problems/services/problemsApi';
+import { updateLeetcodeUsername } from '@/features/auth/services/authApi';
+import { listGroups } from '@/features/groups/services/groupsApi';
+import { useAuth } from '@/features/auth/hooks/useAuth';
+import { cn } from '@/shared/lib/utils';
+import { Button } from '@/shared/ui/button';
+import { Input } from '@/shared/ui/input';
+import { Textarea } from '@/shared/ui/textarea';
+import { toast } from '@/shared/ui/use-toast';
 
 const STORAGE_KEY = 'syncTargetGroups';
 
-function loadSavedGroupIds() {
+const loadSavedGroupIds = () => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
@@ -32,11 +34,11 @@ function loadSavedGroupIds() {
   } catch {
     return [];
   }
-}
+};
 
-function saveSyncGroupIds(ids) {
+const saveSyncGroupIds = (ids) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
-}
+};
 
 const CONSOLE_SCRIPT = `(async () => {
   console.log('LeetTracker: Fetching solved and attempted problems...');
@@ -262,7 +264,7 @@ const CONSOLE_SCRIPT = `(async () => {
 
 })();`;
 
-export default function LeetCodeImport({ onSuccess, onCancel }) {
+const LeetCodeImport = ({ onSuccess, onCancel }) => {
   const { user, updateUser } = useAuth();
   const [step, setStep] = useState(0); // 0: Method Selection, 1-3: Advanced, 4: Success, 5: Instant Setup
   const [importMethod, setImportMethod] = useState(null); // 'instant' or 'advanced'
@@ -283,7 +285,7 @@ export default function LeetCodeImport({ onSuccess, onCancel }) {
 
   // Fetch user's groups on mount
   useEffect(() => {
-    api.getCached('/groups', {}, 15000)
+    listGroups()
       .then(res => {
         setUserGroups(res.data || []);
         // Prune stale group IDs
@@ -338,12 +340,12 @@ export default function LeetCodeImport({ onSuccess, onCancel }) {
     try {
       // 1. If username is new, save it to profile first
       if (normalizedUsername !== user?.leetcodeUsername) {
-        await api.put('/auth/me/leetcode-username', { leetcodeUsername: normalizedUsername });
+        await updateLeetcodeUsername(normalizedUsername);
         updateUser({ ...user, leetcodeUsername: normalizedUsername });
       }
 
       // 2. Trigger sync with groupIds
-      const resp = await api.post('/leetcode/sync', {
+      const resp = await syncLeetcode({
         groupIds: selectedGroupIds,
       });
       const {
@@ -423,7 +425,7 @@ export default function LeetCodeImport({ onSuccess, onCancel }) {
     }
 
     try {
-      const resp = await api.post('/leetcode/import', {
+      const resp = await importLeetcode({
         ...importPayload,
         groupIds: selectedGroupIds,
       });
@@ -902,4 +904,6 @@ export default function LeetCodeImport({ onSuccess, onCancel }) {
       )}
     </div>
   );
-}
+};
+
+export default LeetCodeImport;

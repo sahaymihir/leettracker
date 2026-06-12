@@ -1,5 +1,5 @@
 import { Check } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/shared/lib/utils';
 
 const DIFFICULTY_TEXT = {
   Easy: 'text-sky-400',
@@ -7,7 +7,7 @@ const DIFFICULTY_TEXT = {
   Hard: 'text-rose-400',
 };
 
-export default function ProblemRow({ problem, isAdded, isSelected, onToggleSelect, onAdd }) {
+const ProblemRow = ({ problem, isAdded, isSelected, onToggleSelect, onAdd }) => {
   return (
     <div className="flex items-center justify-between gap-3 py-3 px-4 hover:bg-white/[0.04] transition-colors">
       <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
@@ -64,4 +64,6 @@ export default function ProblemRow({ problem, isAdded, isSelected, onToggleSelec
       </div>
     </div>
   );
-}
+};
+
+export default ProblemRow;

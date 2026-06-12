@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Users, BookOpen, ChevronRight } from 'lucide-react';
-import api from '../api';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Card } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
-import { Progress } from '../components/ui/progress';
-import { Skeleton } from '../components/ui/skeleton';
+import { listGroups, createGroup } from '@/features/groups/services/groupsApi';
+import { Button } from '@/shared/ui/button';
+import { Input } from '@/shared/ui/input';
+import { Label } from '@/shared/ui/label';
+import { Card } from '@/shared/ui/card';
+import { Badge } from '@/shared/ui/badge';
+import { Progress } from '@/shared/ui/progress';
+import { Skeleton } from '@/shared/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -16,10 +16,10 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '../components/ui/dialog';
-import { toast } from '../components/ui/use-toast';
+} from '@/shared/ui/dialog';
+import { toast } from '@/shared/ui/use-toast';
 
-export default function Groups() {
+const Groups = () => {
   const navigate = useNavigate();
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +28,7 @@ export default function Groups() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.getCached('/groups', {}, 15000)
+    listGroups()
       .then(res => setGroups(res.data))
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -38,7 +38,7 @@ export default function Groups() {
     if (!groupName.trim()) return;
     setError('');
     try {
-      const res = await api.post('/groups', { name: groupName.trim() });
+      const res = await createGroup(groupName.trim());
       setGroups(prev => [{ ...res.data, creator_name: 'You' }, ...prev]);
       toast({ title: 'Group created', description: groupName.trim(), variant: 'success' });
       setGroupName('');
@@ -190,4 +190,6 @@ export default function Groups() {
       </Dialog>
     </div>
   );
-}
+};
+
+export default Groups;

@@ -1,15 +1,15 @@
 import { Check, ChevronDown, Loader2, RotateCcw } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { Badge } from '../ui/badge';
-import { Button } from '../ui/button';
-import { Progress } from '../ui/progress';
+import { cn } from '@/shared/lib/utils';
+import { Badge } from '@/shared/ui/badge';
+import { Button } from '@/shared/ui/button';
+import { Progress } from '@/shared/ui/progress';
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '../ui/select';
+} from '@/shared/ui/select';
 
 export function createEmptyBulkProgress(total = 0) {
   return {

@@ -8,19 +8,19 @@ const responseCache = new Map();
 const inflightGets = new Map();
 const DEFAULT_CACHE_TTL = 15000;
 
-function buildCacheKey(url, config = {}) {
+const buildCacheKey = (url, config = {}) => {
   const token = localStorage.getItem('token') || '';
   const params = config.params ? JSON.stringify(config.params) : '';
   return `${token}::${url}::${params}`;
-}
+};
 
-function invalidateCache(prefix = '') {
+const invalidateCache = (prefix = '') => {
   for (const key of responseCache.keys()) {
     if (!prefix || key.includes(prefix)) {
       responseCache.delete(key);
     }
   }
-}
+};
 
 // Add JWT token to every request
 api.interceptors.request.use((config) => {

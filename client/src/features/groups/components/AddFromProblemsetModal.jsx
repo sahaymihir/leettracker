@@ -1,18 +1,18 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Search, Loader2, FolderOpen } from 'lucide-react';
-import api from '../../api';
-import ProblemRow from './ProblemRow';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
+import { listProblems } from '@/features/problems/services/problemsApi';
+import ProblemRow from '@/features/groups/components/ProblemRow';
+import { Button } from '@/shared/ui/button';
+import { Input } from '@/shared/ui/input';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from '../ui/dialog';
+} from '@/shared/ui/dialog';
 
-export default function AddFromProblemsetModal({ isOpen, onClose, onAddProblem, onAddProblems, existingProblems = [] }) {
+const AddFromProblemsetModal = ({ isOpen, onClose, onAddProblem, onAddProblems, existingProblems = [] }) => {
   const [problems, setProblems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,7 +37,7 @@ export default function AddFromProblemsetModal({ isOpen, onClose, onAddProblem, 
   const loadProblems = async () => {
     setLoading(true);
     try {
-      const res = await api.getCached('/problems', {}, 10000);
+      const res = await listProblems();
       setProblems(res.data);
     } catch (err) {
       console.error('Failed to load problems:', err);
@@ -238,4 +238,6 @@ export default function AddFromProblemsetModal({ isOpen, onClose, onAddProblem, 
       </Dialog>
     </>
   );
-}
+};
+
+export default AddFromProblemsetModal;

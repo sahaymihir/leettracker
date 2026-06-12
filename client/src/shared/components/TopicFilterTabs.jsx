@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { cn } from '../lib/utils';
+import { cn } from '@/shared/lib/utils';
 
 const COLLAPSED_LIMIT = 8;
 
 // Collapsible row of topic filter buttons (All, Arrays, Backtracking, ...).
 // Collapses to the first few topics with a "+N more" toggle so a long topic
 // list doesn't dominate the top of the page.
-export default function TopicFilterTabs({ patterns = [], activePattern, onSelect, accent = 'emerald' }) {
+const TopicFilterTabs = ({ patterns = [], activePattern, onSelect, accent = 'emerald' }) => {
   const [expanded, setExpanded] = useState(false);
 
   const activeCls = accent === 'indigo'
@@ -61,4 +61,6 @@ export default function TopicFilterTabs({ patterns = [], activePattern, onSelect
       )}
     </div>
   );
-}
+};
+
+export default TopicFilterTabs;

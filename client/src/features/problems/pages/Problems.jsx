@@ -11,19 +11,25 @@ import {
   FileQuestion,
   Download,
 } from 'lucide-react';
-import api from '../api';
-import LeetCodeImport from '../components/LeetCodeImport';
-import TopicTags from '../components/TopicTags';
-import TopicFilterTabs from '../components/TopicFilterTabs';
-import { getProblemTopics } from '../utils/problemFilters';
-import { cn } from '../lib/utils';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Textarea } from '../components/ui/textarea';
-import { Label } from '../components/ui/label';
-import { Badge, DifficultyBadge } from '../components/ui/badge';
-import { Card } from '../components/ui/card';
-import { Skeleton } from '../components/ui/skeleton';
+import {
+  listProblems,
+  searchProblems,
+  createProblem,
+  updateProblemStatus,
+  deleteProblem,
+} from '@/features/problems/services/problemsApi';
+import LeetCodeImport from '@/features/problems/components/LeetCodeImport';
+import TopicTags from '@/shared/components/TopicTags';
+import TopicFilterTabs from '@/shared/components/TopicFilterTabs';
+import { getProblemTopics } from '@/shared/lib/problemFilters';
+import { cn } from '@/shared/lib/utils';
+import { Button } from '@/shared/ui/button';
+import { Input } from '@/shared/ui/input';
+import { Textarea } from '@/shared/ui/textarea';
+import { Label } from '@/shared/ui/label';
+import { Badge, DifficultyBadge } from '@/shared/ui/badge';
+import { Card } from '@/shared/ui/card';
+import { Skeleton } from '@/shared/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -31,8 +37,8 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '../components/ui/dialog';
-import { toast } from '../components/ui/use-toast';
+} from '@/shared/ui/dialog';
+import { toast } from '@/shared/ui/use-toast';
 import {
   StatusCheckbox,
   FilterRow,
@@ -41,16 +47,16 @@ import {
   AddModeToggle,
   parseBulkProblemNumbers,
   createEmptyBulkProgress,
-} from '../components/problems/shared';
+} from '@/shared/components/StatusControls';
 
 const BULK_ADD_CONCURRENCY = 3;
 const PROBLEMS_PAGE_SIZE = 20;
 
-function getProblemNumber(problem) {
+const getProblemNumber = (problem) => {
   return Number(problem?.leetcode_number ?? problem?.id);
-}
+};
 
-export default function Problems() {
+const Problems = () => {
   const [allProblems, setAllProblems] = useState([]);
   const [expandedTopics, setExpandedTopics] = useState({});
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -81,7 +87,7 @@ export default function Problems() {
 
   const fetchProblems = () => {
     setLoading(true);
-    return api.getCached('/problems', {}, 10000)
+    return listProblems()
       .then(res => setAllProblems(res.data))
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -203,7 +209,7 @@ export default function Problems() {
     setIsSearching(true);
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        const res = await api.get(`/problems/search?q=${encodeURIComponent(query)}`);
+        const res = await searchProblems(query);
         setSearchResults(res.data);
       } catch (err) {
         console.error('Search error', err);
@@ -229,7 +235,7 @@ export default function Problems() {
     if (!preview) return;
     setAddError('');
     try {
-      const res = await api.post('/problems', {
+      const res = await createProblem({
         leetcode_number: preview.number,
         title: preview.title,
         difficulty: preview.difficulty,
@@ -298,7 +304,7 @@ export default function Problems() {
         nextIndex += 1;
 
         try {
-          const res = await api.post('/problems', {
+          const res = await createProblem({
             leetcode_number: number,
             require_dataset: true,
           });
@@ -343,7 +349,7 @@ export default function Problems() {
 
   const handleSetStatus = async (problemId, nextStatus) => {
     try {
-      const res = await api.post(`/problems/${problemId}/status`, { status: nextStatus });
+      const res = await updateProblemStatus(problemId, nextStatus);
       setAllProblems(prev => prev.map(p =>
         p.id === problemId
           ? {
@@ -363,7 +369,7 @@ export default function Problems() {
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await api.delete(`/problems/${deleteTarget.id}`);
+      await deleteProblem(deleteTarget.id);
       setAllProblems(prev => prev.filter(p => p.id !== deleteTarget.id));
       toast({ title: 'Problem deleted', description: deleteTarget.title });
     } catch (err) {
@@ -877,4 +883,6 @@ export default function Problems() {
       </Dialog>
     </div>
   );
-}
+};
+
+export default Problems;

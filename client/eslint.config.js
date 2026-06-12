@@ -28,7 +28,7 @@ export default defineConfig([
   },
   {
     // shadcn-style modules intentionally export variants/helpers next to components.
-    files: ['src/components/ui/**/*.{js,jsx}', 'src/components/problems/shared.jsx'],
+    files: ['src/shared/ui/**/*.{js,jsx}', 'src/shared/components/StatusControls.jsx'],
     rules: {
       'react-refresh/only-export-components': 'off',
     },

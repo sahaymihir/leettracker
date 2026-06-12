@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { User, Loader2 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
-import api from '../api';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/card';
-import { toast } from '../components/ui/use-toast';
+import { useAuth } from '@/features/auth/hooks/useAuth';
+import * as authApi from '@/features/auth/services/authApi';
+import { Button } from '@/shared/ui/button';
+import { Input } from '@/shared/ui/input';
+import { Label } from '@/shared/ui/label';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/shared/ui/card';
+import { toast } from '@/shared/ui/use-toast';
 
-export default function Profile() {
+const Profile = () => {
   const { user, updateUser } = useAuth();
   const [leetcodeUsername, setLeetcodeUsername] = useState(user?.leetcodeUsername || '');
   const [saving, setSaving] = useState(false);
@@ -21,7 +21,7 @@ export default function Profile() {
 
   const saveLeetCodeUsername = async (nextUsername) => {
     const normalizedUsername = nextUsername.trim();
-    const res = await api.put('/auth/me/leetcode-username', { leetcodeUsername: normalizedUsername });
+    const res = await authApi.updateLeetcodeUsername(normalizedUsername);
 
     if (updateUser) {
       updateUser({ ...user, leetcodeUsername: res.data.leetcodeUsername });
@@ -122,4 +122,6 @@ export default function Profile() {
       </div>
     </div>
   );
-}
+};
+
+export default Profile;

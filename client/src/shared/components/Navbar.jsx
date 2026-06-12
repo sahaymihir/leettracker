@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, ListChecks, Users, User, LogOut, ChevronDown, Code2 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
-import { cn } from '../lib/utils';
+import { useAuth } from '@/features/auth/hooks/useAuth';
+import { cn } from '@/shared/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-} from './ui/dropdown-menu';
+} from '@/shared/ui/dropdown-menu';
 
 const NAV_LINKS = [
   { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
@@ -17,7 +17,7 @@ const NAV_LINKS = [
   { to: '/groups', label: 'Groups', Icon: Users },
 ];
 
-export default function Navbar() {
+const Navbar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -119,4 +119,6 @@ export default function Navbar() {
       </div>
     </>
   );
-}
+};
+
+export default Navbar;

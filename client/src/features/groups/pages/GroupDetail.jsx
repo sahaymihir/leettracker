@@ -16,20 +16,31 @@ import {
   FileQuestion,
   Tag,
 } from 'lucide-react';
-import api from '../api';
-import { useAuth } from '../context/AuthContext';
-import AddFromProblemsetModal from '../components/groups/AddFromProblemsetModal';
-import TopicTags from '../components/TopicTags';
-import TopicFilterTabs from '../components/TopicFilterTabs';
-import { getProblemTopics } from '../utils/problemFilters';
-import { cn } from '../lib/utils';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Textarea } from '../components/ui/textarea';
-import { Label } from '../components/ui/label';
-import { Badge, DifficultyBadge } from '../components/ui/badge';
-import { Card } from '../components/ui/card';
-import { Skeleton } from '../components/ui/skeleton';
+import {
+  getGroup,
+  addGroupMember,
+  addProblemToGroup,
+  bulkAddProblemsToGroup,
+  deleteGroup,
+} from '@/features/groups/services/groupsApi';
+import {
+  searchProblems,
+  createProblem,
+  updateProblemStatus,
+} from '@/features/problems/services/problemsApi';
+import { useAuth } from '@/features/auth/hooks/useAuth';
+import AddFromProblemsetModal from '@/features/groups/components/AddFromProblemsetModal';
+import TopicTags from '@/shared/components/TopicTags';
+import TopicFilterTabs from '@/shared/components/TopicFilterTabs';
+import { getProblemTopics } from '@/shared/lib/problemFilters';
+import { cn } from '@/shared/lib/utils';
+import { Button } from '@/shared/ui/button';
+import { Input } from '@/shared/ui/input';
+import { Textarea } from '@/shared/ui/textarea';
+import { Label } from '@/shared/ui/label';
+import { Badge, DifficultyBadge } from '@/shared/ui/badge';
+import { Card } from '@/shared/ui/card';
+import { Skeleton } from '@/shared/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -37,8 +48,8 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '../components/ui/dialog';
-import { toast } from '../components/ui/use-toast';
+} from '@/shared/ui/dialog';
+import { toast } from '@/shared/ui/use-toast';
 import {
   StatusCheckbox,
   FilterRow,
@@ -47,12 +58,12 @@ import {
   AddModeToggle,
   parseBulkProblemNumbers,
   createEmptyBulkProgress,
-} from '../components/problems/shared';
+} from '@/shared/components/StatusControls';
 
 const BULK_GROUP_ADD_CONCURRENCY = 3;
 const PROBLEMS_PAGE_SIZE = 20;
 
-export default function GroupDetail() {
+const GroupDetail = () => {
   const { id } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -92,7 +103,7 @@ export default function GroupDetail() {
   const searchTimeoutRef = useRef(null);
 
   const fetchGroup = useCallback(() => {
-    return api.getCached(`/groups/${id}`, {}, 10000)
+    return getGroup(id)
       .then(res => setGroup(res.data))
       .catch(() => navigate('/groups'))
       .finally(() => setLoading(false));
@@ -187,7 +198,7 @@ export default function GroupDetail() {
     if (!username.trim()) return;
     setError('');
     try {
-      await api.post(`/groups/${id}/members`, { username: username.trim() });
+      await addGroupMember(id, username.trim());
       toast({ title: 'Member added', description: username.trim(), variant: 'success' });
       setUsername('');
       setShowAddMember(false);
@@ -213,7 +224,7 @@ export default function GroupDetail() {
     setIsSearching(true);
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        const res = await api.get(`/problems/search?q=${encodeURIComponent(query)}`);
+        const res = await searchProblems(query);
         setSearchResults(res.data);
       } catch (err) {
         console.error('Search error', err);
@@ -323,7 +334,7 @@ export default function GroupDetail() {
       // First ensure the problem exists in the DB
       let problemRes;
       try {
-        problemRes = await api.post('/problems', {
+        problemRes = await createProblem({
           leetcode_number: preview.number,
           title: preview.title,
           difficulty: preview.difficulty,
@@ -339,7 +350,7 @@ export default function GroupDetail() {
       }
 
       // Add problem to group
-      const addRes = await api.post(`/groups/${id}/problems`, { problem_id: problemRes.data.id });
+      const addRes = await addProblemToGroup(id, problemRes.data.id);
       upsertGroupProblem(addRes.data, problemRes.data.status || 'unsolved');
       toast({ title: 'Problem added to group', description: `#${preview.number} ${preview.title}`, variant: 'success' });
       resetProblemModal();
@@ -406,7 +417,7 @@ export default function GroupDetail() {
         try {
           let problemData;
           try {
-            const problemRes = await api.post('/problems', {
+            const problemRes = await createProblem({
               leetcode_number: number,
               require_dataset: true,
             });
@@ -420,7 +431,7 @@ export default function GroupDetail() {
           }
 
           try {
-            const addRes = await api.post(`/groups/${id}/problems`, { problem_id: problemData.id });
+            const addRes = await addProblemToGroup(id, problemData.id);
             upsertGroupProblem(addRes.data, problemData.status || 'unsolved');
             recordBulkResult({
               status: 'added',
@@ -467,7 +478,7 @@ export default function GroupDetail() {
     setIsDeletingGroup(true);
 
     try {
-      await api.delete(`/groups/${id}`, { data: { name: deleteConfirmName } });
+      await deleteGroup(id, deleteConfirmName);
       toast({ title: 'Group deleted', description: group.name });
       navigate('/groups');
     } catch (err) {
@@ -478,7 +489,7 @@ export default function GroupDetail() {
 
   const handleAddFromProblemset = async (problem) => {
     try {
-      const res = await api.post(`/groups/${id}/problems`, { problem_id: problem.id });
+      const res = await addProblemToGroup(id, problem.id);
       upsertGroupProblem(res.data, problem.status || 'unsolved');
       toast({ title: 'Problem added to group', description: problem.title, variant: 'success' });
     } catch (err) {
@@ -498,7 +509,7 @@ export default function GroupDetail() {
       const chunk = problemsToAdd.slice(i, i + chunkSize);
       const chunkResults = await Promise.allSettled(
         chunk.map(async (problem) => {
-          const res = await api.post(`/groups/${id}/problems`, { problem_id: problem.id });
+          const res = await addProblemToGroup(id, problem.id);
           return { addedProblem: res.data, sourceProblem: problem };
         })
       );
@@ -520,9 +531,10 @@ export default function GroupDetail() {
     let failedCount = 0;
 
     try {
-      const res = await api.post(`/groups/${id}/problems/bulk`, {
-        problem_ids: problemsToAdd.map((problem) => problem.id),
-      });
+      const res = await bulkAddProblemsToGroup(
+        id,
+        problemsToAdd.map((problem) => problem.id),
+      );
 
       const problemsById = new Map(problemsToAdd.map((problem) => [problem.id, problem]));
       succeeded = (res.data?.added || []).map((addedProblem) => ({
@@ -556,7 +568,7 @@ export default function GroupDetail() {
 
   const handleSetStatus = async (problemId, nextStatus) => {
     try {
-      await api.post(`/problems/${problemId}/status`, { status: nextStatus });
+      await updateProblemStatus(problemId, nextStatus);
       updateCurrentUserStatus(problemId, nextStatus);
     } catch (err) {
       console.error(err);
@@ -1176,4 +1188,6 @@ export default function GroupDetail() {
       </Dialog>
     </div>
   );
-}
+};
+
+export default GroupDetail;

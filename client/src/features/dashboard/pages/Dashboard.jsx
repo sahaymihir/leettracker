@@ -11,17 +11,17 @@ import {
   ExternalLink,
   LayoutDashboard,
 } from 'lucide-react';
-import api from '../api';
-import { useAuth } from '../context/AuthContext';
-import Heatmap from '../components/Heatmap';
-import { Card, CardContent } from '../components/ui/card';
-import { Badge, DifficultyBadge } from '../components/ui/badge';
-import { Button } from '../components/ui/button';
-import { Progress } from '../components/ui/progress';
-import { Skeleton } from '../components/ui/skeleton';
-import { cn } from '../lib/utils';
+import { getDashboard, getHeatmap } from '@/features/dashboard/services/dashboardApi';
+import { useAuth } from '@/features/auth/hooks/useAuth';
+import Heatmap from '@/features/dashboard/components/Heatmap';
+import { Card, CardContent } from '@/shared/ui/card';
+import { Badge, DifficultyBadge } from '@/shared/ui/badge';
+import { Button } from '@/shared/ui/button';
+import { Progress } from '@/shared/ui/progress';
+import { Skeleton } from '@/shared/ui/skeleton';
+import { cn } from '@/shared/lib/utils';
 
-function hasVisibleHeatmapActivity(data, year) {
+const hasVisibleHeatmapActivity = (data, year) => {
   const entries = Object.entries(data || {}).filter(([, count]) => count > 0);
   if (entries.length === 0) {
     return false;
@@ -44,7 +44,7 @@ function hasVisibleHeatmapActivity(data, year) {
   });
 }
 
-function getBestHeatmapYear(data) {
+const getBestHeatmapYear = (data) => {
   const currentYear = new Date().getFullYear();
   if (hasVisibleHeatmapActivity(data, currentYear)) {
     return currentYear;
@@ -58,7 +58,7 @@ function getBestHeatmapYear(data) {
   return years.length > 0 ? Math.max(...years) : currentYear;
 }
 
-function getLeetCodeUrl(problem) {
+const getLeetCodeUrl = (problem) => {
   if (problem.url) {
     return problem.url;
   }
@@ -67,7 +67,7 @@ function getLeetCodeUrl(problem) {
   return `https://leetcode.com/problemset/all/?search=${encodeURIComponent(searchTerm)}`;
 }
 
-function getGreeting() {
+const getGreeting = () => {
   const h = new Date().getHours();
   if (h < 5) return 'Good night';
   if (h < 12) return 'Good morning';
@@ -76,7 +76,7 @@ function getGreeting() {
   return 'Good night';
 }
 
-function timeAgo(iso) {
+const timeAgo = (iso) => {
   if (!iso) return '';
   const diff = Date.now() - new Date(iso).getTime();
   const day = 86400000;
@@ -90,7 +90,7 @@ function timeAgo(iso) {
 }
 
 // Current consecutive-day streak + total active days from the heatmap.
-function computeStreak(heatmapData) {
+const computeStreak = (heatmapData) => {
   const days = new Set(
     Object.entries(heatmapData || {})
       .filter(([, count]) => count > 0)
@@ -120,7 +120,7 @@ const DIFFICULTY_COLOR = {
   Hard: { text: 'text-rose-400', bar: 'bg-rose-400', dot: 'bg-rose-400' },
 };
 
-function SectionLabel({ children, hint }) {
+const SectionLabel = ({ children, hint }) => {
   return (
     <div className="flex items-baseline justify-between gap-4 mb-5">
       <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{children}</h2>
@@ -129,7 +129,7 @@ function SectionLabel({ children, hint }) {
   );
 }
 
-function StatCard(props) {
+const StatCard = (props) => {
   const { label, value, sub, accentText, accentBg, delay = 0 } = props;
   return (
     <Card
@@ -148,7 +148,7 @@ function StatCard(props) {
   );
 }
 
-function DashboardSkeleton() {
+const DashboardSkeleton = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12">
       <div className="space-y-3">
@@ -169,7 +169,7 @@ function DashboardSkeleton() {
   );
 }
 
-export default function Dashboard() {
+const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
@@ -199,7 +199,7 @@ export default function Dashboard() {
 
     const loadFallbackHeatmap = async () => {
       try {
-        const heatmapRes = await api.getCached('/dashboard/heatmap?groupId=me', {}, 30000);
+        const heatmapRes = await getHeatmap();
         applyHeatmapData(heatmapRes.data || {});
       } catch (err) {
         console.error(err);
@@ -210,7 +210,7 @@ export default function Dashboard() {
       }
     };
 
-    api.getCached('/dashboard', {}, 15000)
+    getDashboard()
       .then((dashRes) => {
         if (!isMounted) {
           return;
@@ -609,4 +609,6 @@ export default function Dashboard() {
       )}
     </div>
   );
-}
+};
+
+export default Dashboard;
