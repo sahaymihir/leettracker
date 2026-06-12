@@ -30,7 +30,7 @@ export default function Navbar() {
 
   return (
     <>
-      <nav className="sticky top-0 z-50 border-b border-white/[0.06] bg-background/70 backdrop-blur-xl">
+      <nav className="sticky top-0 z-50 border-b border-white/[0.06] bg-background/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-8">
             <NavLink to="/dashboard" className="group flex items-center gap-2.5">
@@ -98,7 +98,7 @@ export default function Navbar() {
       </nav>
 
       {/* Mobile bottom navigation */}
-      <div className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-white/[0.06] bg-background/90 backdrop-blur-xl">
+      <div className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-white/[0.06] bg-background/95 backdrop-blur-md">
         <div className="grid grid-cols-3 px-2 py-2">
           {NAV_LINKS.map((link) => (
             <NavLink

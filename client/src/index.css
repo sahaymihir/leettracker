@@ -32,10 +32,19 @@
 
   body {
     @apply bg-background text-foreground min-h-screen antialiased selection:bg-emerald-500/30;
+  }
+
+  /* Background gradient lives on a fixed, composited layer so it does NOT
+     repaint on every scroll frame (unlike `background-attachment: fixed`). */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
     background-image:
       radial-gradient(ellipse 80% 50% at 50% -20%, hsl(160 84% 39% / 0.08), transparent),
       radial-gradient(ellipse 60% 40% at 90% 110%, hsl(240 60% 50% / 0.05), transparent);
-    background-attachment: fixed;
   }
 }
 

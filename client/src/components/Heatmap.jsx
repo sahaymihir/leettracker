@@ -201,7 +201,7 @@ export default function Heatmap({ data = {}, year = new Date().getFullYear() }) 
                     key={`${col}-${row}`}
                     onMouseEnter={(e) => handleMouseEnter(e, cell)}
                     onMouseLeave={() => setTooltip({ show: false, text: '', x: 0, y: 0 })}
-                    className={`rounded-[3px] transition-all duration-150 hover:ring-2 hover:ring-emerald-300/40 cursor-pointer ${getColorClass(cell.count)}`}
+                    className={`rounded-[3px] transition-colors duration-150 hover:ring-2 hover:ring-emerald-300/40 cursor-pointer ${getColorClass(cell.count)}`}
                     style={{ width: `${cellSizePx}px`, height: `${cellSizePx}px` }}
                   />
                 );
