@@ -1,14 +1,17 @@
-import { putItem, getItem, queryItems, scanItems, deleteItem, batchGetItems } from '../db/dynamodb.js';
+import * as problemsRepo from '../repositories/problemsRepo.js';
+import * as progressRepo from '../repositories/progressRepo.js';
+import * as patternsRepo from '../repositories/patternsRepo.js';
+import * as groupsRepo from '../repositories/groupsRepo.js';
 import { getProblemsDataset, getProblemByNumber } from '../utils/problemsDataset.js';
 
 // Helper: persist a problem's progress status for a user
 const setProblemStatus = async (userId, problemId, newStatus) => {
   const timestamp = new Date().toISOString();
-  const existingProgress = await getItem(`PROGRESS#${userId}`, `PROB#${problemId}`);
+  const existingProgress = await progressRepo.get(userId, problemId);
 
-  await putItem({
-    PK: `PROGRESS#${userId}`,
-    SK: `PROB#${problemId}`,
+  await progressRepo.save({
+    userId,
+    num: problemId,
     solved: newStatus === 'solved' ? 1 : 0,
     status: newStatus,
     solvedAt: newStatus === 'solved' ? timestamp : null,
@@ -82,7 +85,7 @@ export const getProblems = async (req, res) => {
     const { pattern, difficulty, solved } = req.query;
 
     // Get user progress for all problems
-    const progressItems = await queryItems(`PROGRESS#${req.userId}`, 'PROB#');
+    const progressItems = await progressRepo.listForUser(req.userId);
     let trackedProblems = progressItems.map((progress) => {
       const lcNum = progress.SK.replace('PROB#', '');
       const status = progress.status || (progress.solved === 1 ? 'solved' : 'unsolved');
@@ -107,11 +110,8 @@ export const getProblems = async (req, res) => {
       return res.json([]);
     }
 
-    const problemItems = await batchGetItems(
-      trackedProblems.map((problem) => ({
-        PK: `PROBLEM#${problem.id}`,
-        SK: 'DETAIL',
-      }))
+    const problemItems = await problemsRepo.getManyByNumbers(
+      trackedProblems.map((problem) => problem.id)
     );
 
     const problemMap = new Map(
@@ -182,7 +182,7 @@ export const addProblem = async (req, res) => {
     const requireDataset = require_dataset === true;
 
     // Check if already tracking
-    const progress = await getItem(`PROGRESS#${req.userId}`, `PROB#${num}`);
+    const progress = await progressRepo.get(req.userId, num);
     if (progress) {
       return res.status(400).json({
         error: 'Problem already in your list',
@@ -206,7 +206,7 @@ export const addProblem = async (req, res) => {
 
     // Lookup from dataset
     let title, difficulty, slug, url, patternName = null;
-    const existing = await getItem(`PROBLEM#${num}`, 'DETAIL');
+    const existing = await problemsRepo.getByNumber(num);
 
     if (existing) {
       // Use existing metadata
@@ -232,21 +232,14 @@ export const addProblem = async (req, res) => {
       const createdAt = new Date().toISOString();
 
       if (patternName) {
-        const existingPattern = await queryItems('PATTERN', `PAT#${patternName}`);
+        const existingPattern = await patternsRepo.getByName(patternName);
         if (existingPattern.length === 0) {
-          await putItem({
-            PK: 'PATTERN',
-            SK: `PAT#${patternName}`,
-            name: patternName,
-            isDefault: 0,
-            createdBy: req.userId,
-          });
+          await patternsRepo.save({ name: patternName, isDefault: 0, createdBy: req.userId });
         }
       }
 
-      await putItem({
-        PK: `PROBLEM#${num}`,
-        SK: 'DETAIL',
+      await problemsRepo.save({
+        num,
         leetcodeNumber: num,
         title,
         slug,
@@ -259,9 +252,9 @@ export const addProblem = async (req, res) => {
     }
 
     // Add to user's progress
-    await putItem({
-      PK: `PROGRESS#${req.userId}`,
-      SK: `PROB#${num}`,
+    await progressRepo.save({
+      userId: req.userId,
+      num,
       solved: 0,
       status: 'unsolved',
       solvedAt: null,
@@ -296,12 +289,12 @@ export const toggleProblemStatus = async (req, res) => {
     const problemId = parseInt(req.params.id);
 
     // Check problem exists
-    const problem = await getItem(`PROBLEM#${problemId}`, 'DETAIL');
+    const problem = await problemsRepo.getByNumber(problemId);
     if (!problem) {
       return res.status(404).json({ error: 'Problem not found' });
     }
 
-    const progress = await getItem(`PROGRESS#${req.userId}`, `PROB#${problemId}`);
+    const progress = await progressRepo.get(req.userId, problemId);
     const currentStatus = progress?.status || (progress?.solved ? 'solved' : 'unsolved');
 
     let newStatus = 'attempted';
@@ -333,7 +326,7 @@ export const updateProblemStatus = async (req, res) => {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
-    const problem = await getItem(`PROBLEM#${problemId}`, 'DETAIL');
+    const problem = await problemsRepo.getByNumber(problemId);
     if (!problem) {
       return res.status(404).json({ error: 'Problem not found' });
     }
@@ -355,31 +348,25 @@ export const deleteProblem = async (req, res) => {
   try {
     const problemId = parseInt(req.params.id);
 
-    const existing = await getItem(`PROBLEM#${problemId}`, 'DETAIL');
+    const existing = await problemsRepo.getByNumber(problemId);
     if (!existing) {
       return res.status(404).json({ error: 'Problem not found' });
     }
 
     // Only remove the user's progress for this problem, effectively "untracking" it.
-    await deleteItem(`PROGRESS#${req.userId}`, `PROB#${problemId}`);
+    await progressRepo.remove(req.userId, problemId);
 
     // Clean up all GROUP# PROBLEM# entries referencing this problem
-    const groupProblemItems = await scanItems(
-      'begins_with(PK, :prefix) AND SK = :sk',
-      { ':prefix': 'GROUP#', ':sk': `PROBLEM#${problemId}` }
-    );
+    const groupProblemItems = await groupsRepo.findProblemRefsAcrossGroups(problemId);
     for (const gp of groupProblemItems) {
-      await deleteItem(gp.PK, gp.SK);
+      await groupsRepo.removeRow(gp.PK, gp.SK);
     }
 
     // Clean up orphaned pattern if no other problems use it
     if (existing.patternName) {
-      const remaining = await scanItems(
-        'begins_with(PK, :prefix) AND patternName = :pattern',
-        { ':prefix': 'PROBLEM#', ':pattern': existing.patternName }
-      );
+      const remaining = await problemsRepo.findRowsByPattern(existing.patternName);
       if (remaining.length === 0) {
-        await deleteItem('PATTERN', `PAT#${existing.patternName}`);
+        await patternsRepo.remove(existing.patternName);
       }
     }
 

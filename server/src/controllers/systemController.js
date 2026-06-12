@@ -1,4 +1,4 @@
-import { scanItems } from '../db/dynamodb.js';
+import * as systemRepo from '../repositories/systemRepo.js';
 import { backupToS3 } from '../backup.js';
 
 /**
@@ -21,7 +21,7 @@ export const runBackup = async (req, res) => {
     const s3Result = await backupToS3();
 
     // Also return the data as downloadable JSON
-    const allItems = await scanItems();
+    const allItems = await systemRepo.scanAll();
     res.setHeader('Content-Disposition', `attachment; filename=leettracker-backup-${new Date().toISOString().slice(0, 10)}.json`);
     res.json({
       exportedAt: new Date().toISOString(),

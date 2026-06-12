@@ -6,7 +6,7 @@
  */
 
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { scanItems } from './db/dynamodb.js';
+import * as systemRepo from './repositories/systemRepo.js';
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION || 'ap-south-1',
@@ -16,7 +16,7 @@ export const BUCKET_NAME = process.env.S3_BACKUP_BUCKET || 'leettracker-backups'
 
 export const backupToS3 = async () => {
   // Scan all items from DynamoDB
-  const allItems = await scanItems();
+  const allItems = await systemRepo.scanAll();
 
   const now = new Date();
   const dateStr = now.toISOString().slice(0, 10); // 2026-03-11

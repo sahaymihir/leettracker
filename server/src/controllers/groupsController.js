@@ -1,5 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
-import { putItem, getItem, queryItems, deleteItem, batchGetItems } from '../db/dynamodb.js';
+import * as groupsRepo from '../repositories/groupsRepo.js';
+import * as problemsRepo from '../repositories/problemsRepo.js';
+import * as progressRepo from '../repositories/progressRepo.js';
+import * as usersRepo from '../repositories/usersRepo.js';
 import { getProblemByNumber } from '../utils/problemsDataset.js';
 
 // Helper: shape a problem record for group responses
@@ -28,8 +31,8 @@ const serializeGroupProblem = (problem) => {
 export const listGroups = async (req, res) => {
   try {
     // Get all groups the user belongs to
-    const userGroups = await queryItems(`USERGROUP#${req.userId}`, 'GROUP#');
-    const progressItems = await queryItems(`PROGRESS#${req.userId}`, 'PROB#');
+    const userGroups = await groupsRepo.listUserGroupIndex(req.userId);
+    const progressItems = await progressRepo.listForUser(req.userId);
     const progressMap = {};
 
     progressItems.forEach((progress) => {
@@ -40,9 +43,9 @@ export const listGroups = async (req, res) => {
     const groups = (await Promise.all(userGroups.map(async (ug) => {
       const groupId = ug.SK.replace('GROUP#', '');
       const [detail, members, problems] = await Promise.all([
-        getItem(`GROUP#${groupId}`, 'DETAIL'),
-        queryItems(`GROUP#${groupId}`, 'MEMBER#'),
-        queryItems(`GROUP#${groupId}`, 'PROBLEM#'),
+        groupsRepo.getDetail(groupId),
+        groupsRepo.listMembers(groupId),
+        groupsRepo.listProblems(groupId),
       ]);
 
       if (!detail) return null;
@@ -100,9 +103,8 @@ export const createGroup = async (req, res) => {
     const now = new Date().toISOString();
 
     // Create group detail
-    await putItem({
-      PK: `GROUP#${groupId}`,
-      SK: 'DETAIL',
+    await groupsRepo.saveGroup({
+      groupId,
       name: trimmedName,
       createdBy: req.userId,
       createdByUsername: req.username,
@@ -110,17 +112,17 @@ export const createGroup = async (req, res) => {
     });
 
     // Add creator as member
-    await putItem({
-      PK: `GROUP#${groupId}`,
-      SK: `MEMBER#${req.userId}`,
+    await groupsRepo.saveMember({
+      groupId,
+      userId: req.userId,
       username: req.username,
       joinedAt: now,
     });
 
     // Add user→group index
-    await putItem({
-      PK: `USERGROUP#${req.userId}`,
-      SK: `GROUP#${groupId}`,
+    await groupsRepo.saveUserGroupIndex({
+      userId: req.userId,
+      groupId,
       groupName: trimmedName,
     });
 
@@ -149,34 +151,31 @@ export const getGroupDetail = async (req, res) => {
     const groupId = req.params.id;
 
     // Check membership
-    const membership = await getItem(`GROUP#${groupId}`, `MEMBER#${req.userId}`);
+    const membership = await groupsRepo.getMember(groupId, req.userId);
     if (!membership) {
       return res.status(403).json({ error: 'Not a member of this group' });
     }
 
     // Get group detail
-    const detail = await getItem(`GROUP#${groupId}`, 'DETAIL');
+    const detail = await groupsRepo.getDetail(groupId);
     if (!detail) return res.status(404).json({ error: 'Group not found' });
 
     // Get members
-    const memberItems = await queryItems(`GROUP#${groupId}`, 'MEMBER#');
+    const memberItems = await groupsRepo.listMembers(groupId);
     const members = memberItems.map(m => ({
       id: m.SK.replace('MEMBER#', ''),
       username: m.username,
     }));
 
     // Get group problems
-    const groupProblemItems = await queryItems(`GROUP#${groupId}`, 'PROBLEM#');
+    const groupProblemItems = await groupsRepo.listProblems(groupId);
     const [problemDetails, memberProgressMaps] = await Promise.all([
-      batchGetItems(
-        groupProblemItems.map((gp) => ({
-          PK: `PROBLEM#${gp.SK.replace('PROBLEM#', '')}`,
-          SK: 'DETAIL',
-        }))
+      problemsRepo.getManyByNumbers(
+        groupProblemItems.map((gp) => gp.SK.replace('PROBLEM#', ''))
       ),
       Promise.all(
         members.map(async (member) => {
-          const progressItems = await queryItems(`PROGRESS#${member.id}`, 'PROB#');
+          const progressItems = await progressRepo.listForUser(member.id);
           const progressMap = {};
 
           progressItems.forEach((progress) => {
@@ -257,30 +256,30 @@ export const addMember = async (req, res) => {
     if (!username) return res.status(400).json({ error: 'Username is required' });
 
     // Look up user by username
-    const userLookup = await getItem(`USERNAME#${username}`, 'PROFILE');
+    const userLookup = await usersRepo.getByUsername(username);
     if (!userLookup) return res.status(404).json({ error: 'User not found' });
 
     const userId = userLookup.email; // userId is the email
 
     // Check if already a member
-    const existing = await getItem(`GROUP#${groupId}`, `MEMBER#${userId}`);
+    const existing = await groupsRepo.getMember(groupId, userId);
     if (existing) return res.status(400).json({ error: 'User already a member' });
 
     // Get group name for the index
-    const groupDetail = await getItem(`GROUP#${groupId}`, 'DETAIL');
+    const groupDetail = await groupsRepo.getDetail(groupId);
 
     // Add member
-    await putItem({
-      PK: `GROUP#${groupId}`,
-      SK: `MEMBER#${userId}`,
+    await groupsRepo.saveMember({
+      groupId,
+      userId,
       username: userLookup.username,
       joinedAt: new Date().toISOString(),
     });
 
     // Add user→group index
-    await putItem({
-      PK: `USERGROUP#${userId}`,
-      SK: `GROUP#${groupId}`,
+    await groupsRepo.saveUserGroupIndex({
+      userId,
+      groupId,
       groupName: groupDetail ? groupDetail.name : '',
     });
 
@@ -310,17 +309,12 @@ export const bulkAddProblemsToGroup = async (req, res) => {
       return res.status(400).json({ error: 'problem_ids must be a non-empty array' });
     }
 
-    const existingGroupProblems = await queryItems(`GROUP#${groupId}`, 'PROBLEM#');
+    const existingGroupProblems = await groupsRepo.listProblems(groupId);
     const existingIds = new Set(
       existingGroupProblems.map((item) => parseInt(item.SK.replace('PROBLEM#', ''), 10))
     );
 
-    const problemDetails = await batchGetItems(
-      problemIds.map((problemId) => ({
-        PK: `PROBLEM#${problemId}`,
-        SK: 'DETAIL',
-      }))
-    );
+    const problemDetails = await problemsRepo.getManyByNumbers(problemIds);
     const problemsById = new Map(
       problemDetails.map((problem) => [problem.leetcodeNumber, problem])
     );
@@ -342,12 +336,7 @@ export const bulkAddProblemsToGroup = async (req, res) => {
         continue;
       }
 
-      await putItem({
-        PK: `GROUP#${groupId}`,
-        SK: `PROBLEM#${problemId}`,
-        addedBy: req.userId,
-        addedAt,
-      });
+      await groupsRepo.saveProblem({ groupId, num: problemId, addedBy: req.userId, addedAt });
 
       existingIds.add(problemId);
       added.push(serializeGroupProblem(problem));
@@ -381,19 +370,19 @@ export const addProblemToGroup = async (req, res) => {
     const lcNum = parseInt(problem_id);
 
     // Check if problem already in group
-    const existing = await getItem(`GROUP#${groupId}`, `PROBLEM#${lcNum}`);
+    const existing = await groupsRepo.getProblem(groupId, lcNum);
     if (existing) return res.status(400).json({ error: 'Problem already in group' });
 
     // Add problem to group
-    await putItem({
-      PK: `GROUP#${groupId}`,
-      SK: `PROBLEM#${lcNum}`,
+    await groupsRepo.saveProblem({
+      groupId,
+      num: lcNum,
       addedBy: req.userId,
       addedAt: new Date().toISOString(),
     });
 
     // Get problem details to return
-    const problem = await getItem(`PROBLEM#${lcNum}`, 'DETAIL');
+    const problem = await problemsRepo.getByNumber(lcNum);
     res.json(serializeGroupProblem(problem) || { id: lcNum, leetcode_number: lcNum });
   } catch (err) {
     console.error('Add group problem error:', err);
@@ -410,7 +399,7 @@ export const deleteGroup = async (req, res) => {
   try {
     const groupId = req.params.id;
     const confirmationName = (req.body?.name || '').trim();
-    const detail = await getItem(`GROUP#${groupId}`, 'DETAIL');
+    const detail = await groupsRepo.getDetail(groupId);
 
     if (!detail) {
       return res.status(404).json({ error: 'Group not found' });
@@ -424,14 +413,14 @@ export const deleteGroup = async (req, res) => {
       return res.status(400).json({ error: 'Group name confirmation does not match' });
     }
 
-    const groupItems = await queryItems(`GROUP#${groupId}`);
+    const groupItems = await groupsRepo.listAllRows(groupId);
     const memberIds = groupItems
       .filter((item) => item.SK?.startsWith('MEMBER#'))
       .map((item) => item.SK.replace('MEMBER#', ''));
 
     await Promise.all([
-      ...groupItems.map((item) => deleteItem(item.PK, item.SK)),
-      ...memberIds.map((memberId) => deleteItem(`USERGROUP#${memberId}`, `GROUP#${groupId}`)),
+      ...groupItems.map((item) => groupsRepo.removeRow(item.PK, item.SK)),
+      ...memberIds.map((memberId) => groupsRepo.removeUserGroupIndex(memberId, groupId)),
     ]);
 
     res.json({ success: true });
@@ -451,10 +440,10 @@ export const leaveGroup = async (req, res) => {
     const groupId = req.params.id;
 
     // Remove member record
-    await deleteItem(`GROUP#${groupId}`, `MEMBER#${req.userId}`);
+    await groupsRepo.removeMember(groupId, req.userId);
 
     // Remove user→group index
-    await deleteItem(`USERGROUP#${req.userId}`, `GROUP#${groupId}`);
+    await groupsRepo.removeUserGroupIndex(req.userId, groupId);
 
     res.json({ message: 'Left group' });
   } catch (err) {

@@ -1,4 +1,6 @@
-import { queryItems, getItem, batchGetItems } from '../db/dynamodb.js';
+import * as progressRepo from '../repositories/progressRepo.js';
+import * as problemsRepo from '../repositories/problemsRepo.js';
+import * as groupsRepo from '../repositories/groupsRepo.js';
 import { getProblemByNumber } from '../utils/problemsDataset.js';
 
 // Helper: whether a progress record counts as solved
@@ -112,7 +114,7 @@ const buildPatternInsights = (trackedProblems, progressMap) => {
 export const getDashboard = async (req, res) => {
   try {
     // Get user progress
-    const progressItems = await queryItems(`PROGRESS#${req.userId}`, 'PROB#');
+    const progressItems = await progressRepo.listForUser(req.userId);
     const progressMap = {};
     progressItems.forEach(p => {
       const lcNum = p.SK.replace('PROB#', '');
@@ -120,12 +122,7 @@ export const getDashboard = async (req, res) => {
       progressMap[lcNum] = { solved: p.solved, solvedAt: p.solvedAt, status };
     });
 
-    const trackedProblems = await batchGetItems(
-      Object.keys(progressMap).map((lcNum) => ({
-        PK: `PROBLEM#${lcNum}`,
-        SK: 'DETAIL',
-      }))
-    );
+    const trackedProblems = await problemsRepo.getManyByNumbers(Object.keys(progressMap));
     const problemsById = new Map(
       trackedProblems.map((problem) => [String(problem.leetcodeNumber), problem])
     );
@@ -158,13 +155,13 @@ export const getDashboard = async (req, res) => {
     const { patternStats, patternHeatmap } = buildPatternInsights(trackedProblems, progressMap);
     const difficultyStats = Object.values(difficultyMap);
     // Group progress
-    const userGroups = await queryItems(`USERGROUP#${req.userId}`, 'GROUP#');
+    const userGroups = await groupsRepo.listUserGroupIndex(req.userId);
     const groupStats = (await Promise.all(userGroups.map(async (ug) => {
       const groupId = ug.SK.replace('GROUP#', '');
       const [detail, groupProblems, memberItems] = await Promise.all([
-        getItem(`GROUP#${groupId}`, 'DETAIL'),
-        queryItems(`GROUP#${groupId}`, 'PROBLEM#'),
-        queryItems(`GROUP#${groupId}`, 'MEMBER#'),
+        groupsRepo.getDetail(groupId),
+        groupsRepo.listProblems(groupId),
+        groupsRepo.listMembers(groupId),
       ]);
 
       if (!detail) {
@@ -240,7 +237,7 @@ export const getHeatmap = async (req, res) => {
 
     // If a group is specified, fetch all members of that group
     if (groupId && groupId !== 'me') {
-      const members = await queryItems(`GROUP#${groupId}`, 'MEMBER#');
+      const members = await groupsRepo.listMembers(groupId);
       if (members.length > 0) {
         // MEMBER items have `PK = GROUP#<id>`, `SK = MEMBER#<email>` — the email is in the SK
         userIdsToFetch = members.map(m => m.SK.replace('MEMBER#', ''));
@@ -250,7 +247,7 @@ export const getHeatmap = async (req, res) => {
     }
 
     const memberProgressItems = await Promise.all(
-      userIdsToFetch.map((uid) => queryItems(`PROGRESS#${uid}`, 'PROB#'))
+      userIdsToFetch.map((uid) => progressRepo.listForUser(uid))
     );
 
     // Aggregate all solves per date (YYYY-MM-DD)
@@ -280,7 +277,7 @@ export const getPatternHeatmap = async (req, res) => {
   try {
     const uId = req.params.userId === 'me' ? req.userId : req.params.userId;
 
-    const progressItems = await queryItems(`PROGRESS#${uId}`, 'PROB#');
+    const progressItems = await progressRepo.listForUser(uId);
     const progressMap = {};
     progressItems.forEach(p => {
       const lcNum = p.SK.replace('PROB#', '');
@@ -288,12 +285,7 @@ export const getPatternHeatmap = async (req, res) => {
       progressMap[lcNum] = { solved: p.solved, status };
     });
 
-    const trackedProblems = await batchGetItems(
-      Object.keys(progressMap).map((lcNum) => ({
-        PK: `PROBLEM#${lcNum}`,
-        SK: 'DETAIL',
-      }))
-    );
+    const trackedProblems = await problemsRepo.getManyByNumbers(Object.keys(progressMap));
 
     const { patternHeatmap } = buildPatternInsights(trackedProblems, progressMap);
     res.json(patternHeatmap);

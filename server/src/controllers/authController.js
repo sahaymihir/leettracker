@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { TOKEN_COOKIE, cookieOptions } from '../middleware/auth.js';
 import { generateToken } from '../utils/generateToken.js';
-import { putItem, getItem, updateItem } from '../db/dynamodb.js';
+import * as usersRepo from '../repositories/usersRepo.js';
 
 /**
  * @name registerUserController
@@ -16,13 +16,13 @@ export const register = async (req, res) => {
     }
 
     // Check if email exists
-    const existingEmail = await getItem(`USER#${email}`, 'PROFILE');
+    const existingEmail = await usersRepo.getByEmail(email);
     if (existingEmail) {
       return res.status(400).json({ error: 'User already exists' });
     }
 
     // Check if username exists
-    const existingUsername = await getItem(`USERNAME#${username}`, 'PROFILE');
+    const existingUsername = await usersRepo.getByUsername(username);
     if (existingUsername) {
       return res.status(400).json({ error: 'User already exists' });
     }
@@ -30,23 +30,8 @@ export const register = async (req, res) => {
     const passwordHash = bcrypt.hashSync(password, 10);
     const createdAt = new Date().toISOString();
 
-    // Store user by email (primary record)
-    await putItem({
-      PK: `USER#${email}`,
-      SK: 'PROFILE',
-      username,
-      email,
-      passwordHash,
-      createdAt,
-    });
-
-    // Store username lookup record
-    await putItem({
-      PK: `USERNAME#${username}`,
-      SK: 'PROFILE',
-      email,
-      username,
-    });
+    // Store user by email (primary record) + username lookup record
+    await usersRepo.create({ email, username, passwordHash, createdAt });
 
     // Sets the HttpOnly session cookie (XSS can't read it) and returns the token.
     // We still echo the token in the body for non-browser API clients (e.g. the
@@ -71,7 +56,7 @@ export const login = async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    const user = await getItem(`USER#${email}`, 'PROFILE');
+    const user = await usersRepo.getByEmail(email);
     if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -103,7 +88,7 @@ export const logout = (req, res) => {
  */
 export const getMe = async (req, res) => {
   try {
-    const user = await getItem(`USER#${req.userId}`, 'PROFILE');
+    const user = await usersRepo.getByEmail(req.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({
       id: user.email,
@@ -126,23 +111,10 @@ export const getMe = async (req, res) => {
 export const updateLeetcodeUsername = async (req, res) => {
   try {
     const { leetcodeUsername } = req.body;
-    const user = await getItem(`USER#${req.userId}`, 'PROFILE');
+    const user = await usersRepo.getByEmail(req.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    if (leetcodeUsername) {
-      await updateItem(
-        `USER#${req.userId}`,
-        'PROFILE',
-        'SET leetcodeUsername = :lc',
-        { ':lc': leetcodeUsername }
-      );
-    } else {
-      await updateItem(
-        `USER#${req.userId}`,
-        'PROFILE',
-        'REMOVE leetcodeUsername'
-      );
-    }
+    await usersRepo.updateLeetcodeUsername(req.userId, leetcodeUsername);
 
     res.json({ success: true, leetcodeUsername });
   } catch (err) {

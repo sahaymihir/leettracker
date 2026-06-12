@@ -1,4 +1,4 @@
-import { putItem, queryItems } from '../db/dynamodb.js';
+import * as patternsRepo from '../repositories/patternsRepo.js';
 
 /**
  * @name getPatternsController
@@ -7,7 +7,7 @@ import { putItem, queryItems } from '../db/dynamodb.js';
  */
 export const getPatterns = async (req, res) => {
   try {
-    const patterns = await queryItems('PATTERN', 'PAT#');
+    const patterns = await patternsRepo.listAll();
     // Sort: defaults first, then alphabetical
     patterns.sort((a, b) => {
       if (a.isDefault !== b.isDefault) return b.isDefault - a.isDefault;
@@ -40,18 +40,12 @@ export const addPattern = async (req, res) => {
     const trimmed = name.trim();
 
     // Check if exists
-    const existing = await queryItems('PATTERN', `PAT#${trimmed}`);
+    const existing = await patternsRepo.getByName(trimmed);
     if (existing.length > 0) {
       return res.status(400).json({ error: 'Pattern already exists' });
     }
 
-    await putItem({
-      PK: 'PATTERN',
-      SK: `PAT#${trimmed}`,
-      name: trimmed,
-      isDefault: 0,
-      createdBy: req.userId,
-    });
+    await patternsRepo.save({ name: trimmed, isDefault: 0, createdBy: req.userId });
 
     res.json({ id: trimmed, name: trimmed, is_default: 0 });
   } catch (err) {

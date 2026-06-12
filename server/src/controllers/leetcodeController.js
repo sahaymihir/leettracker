@@ -1,5 +1,9 @@
 import axios from 'axios';
-import { putItem, getItem, queryItems } from '../db/dynamodb.js';
+import * as problemsRepo from '../repositories/problemsRepo.js';
+import * as progressRepo from '../repositories/progressRepo.js';
+import * as patternsRepo from '../repositories/patternsRepo.js';
+import * as groupsRepo from '../repositories/groupsRepo.js';
+import * as usersRepo from '../repositories/usersRepo.js';
 import { getProblemBySlug } from '../utils/problemsDataset.js';
 
 const LEETCODE_GRAPHQL_URL = 'https://leetcode.com/graphql';
@@ -71,26 +75,19 @@ const isAcceptedSubmission = (submission) => {
 // Helper: ensure problem exists in DB, create if not
 const ensureProblemExists = async (problemData, userId) => {
   const num = problemData.number;
-  const existingProb = await getItem(`PROBLEM#${num}`, 'DETAIL');
+  const existingProb = await problemsRepo.getByNumber(num);
   if (!existingProb) {
     const patternName = problemData.topics?.[0] || 'Uncategorized';
 
     if (patternName) {
-      const existingPattern = await queryItems('PATTERN', `PAT#${patternName}`);
+      const existingPattern = await patternsRepo.getByName(patternName);
       if (existingPattern.length === 0) {
-        await putItem({
-          PK: 'PATTERN',
-          SK: `PAT#${patternName}`,
-          name: patternName,
-          isDefault: 0,
-          createdBy: userId,
-        });
+        await patternsRepo.save({ name: patternName, isDefault: 0, createdBy: userId });
       }
     }
 
-    await putItem({
-      PK: `PROBLEM#${num}`,
-      SK: 'DETAIL',
+    await problemsRepo.save({
+      num,
       leetcodeNumber: num,
       title: problemData.title,
       slug: problemData.slug,
@@ -105,7 +102,7 @@ const ensureProblemExists = async (problemData, userId) => {
 
 // Helper: update progress with priority logic (solved > attempted > unsolved, never downgrade)
 const updateProgress = async (userId, num, newStatus, timestamp) => {
-  const existingProgress = await getItem(`PROGRESS#${userId}`, `PROB#${num}`);
+  const existingProgress = await progressRepo.get(userId, num);
   const currentStatus = existingProgress?.status || (existingProgress?.solved === 1 ? 'solved' : 'unsolved');
 
   // Priority: solved > attempted > unsolved. Never downgrade.
@@ -116,9 +113,9 @@ const updateProgress = async (userId, num, newStatus, timestamp) => {
 
   const solvedAt = newStatus === 'solved' ? timestamp : (existingProgress?.solvedAt || null);
 
-  await putItem({
-    PK: `PROGRESS#${userId}`,
-    SK: `PROB#${num}`,
+  await progressRepo.save({
+    userId,
+    num,
     solved: newStatus === 'solved' ? 1 : 0,
     status: newStatus,
     solvedAt: solvedAt,
@@ -141,14 +138,14 @@ const addProblemsToGroups = async (userId, problemNumbers, groupIds) => {
   for (const groupId of groupIds) {
     try {
       // Validate membership
-      const membership = await getItem(`GROUP#${groupId}`, `MEMBER#${userId}`);
+      const membership = await groupsRepo.getMember(groupId, userId);
       if (!membership) {
         groupsFailed++;
         continue;
       }
 
       // Get existing problems in group to avoid duplicates
-      const existingGroupProblems = await queryItems(`GROUP#${groupId}`, 'PROBLEM#');
+      const existingGroupProblems = await groupsRepo.listProblems(groupId);
       const existingIds = new Set(
         existingGroupProblems.map((item) => parseInt(item.SK.replace('PROBLEM#', ''), 10))
       );
@@ -156,12 +153,7 @@ const addProblemsToGroups = async (userId, problemNumbers, groupIds) => {
       let addedCount = 0;
       for (const num of problemNumbers) {
         if (existingIds.has(num)) continue;
-        await putItem({
-          PK: `GROUP#${groupId}`,
-          SK: `PROBLEM#${num}`,
-          addedBy: userId,
-          addedAt,
-        });
+        await groupsRepo.saveProblem({ groupId, num, addedBy: userId, addedAt });
         addedCount++;
       }
 
@@ -389,7 +381,7 @@ export const syncFromLeetCode = async (req, res) => {
   try {
     const groupIds = Array.isArray(req.body?.groupIds) ? req.body.groupIds : [];
 
-    const user = await getItem(`USER#${req.userId}`, 'PROFILE');
+    const user = await usersRepo.getByEmail(req.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const username = user.leetcodeUsername?.trim();
