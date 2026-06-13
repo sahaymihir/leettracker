@@ -55,6 +55,15 @@ const ProblemFilters = ({
           >
             Recently solved
           </button>
+          <button
+            onClick={() => setSortBy('attempted')}
+            className={cn(
+              'px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+              sortBy === 'attempted' ? 'bg-emerald-500/20 text-emerald-400' : 'text-muted-foreground hover:text-white'
+            )}
+          >
+            Recently attempted
+          </button>
         </div>
       </div>
     </div>

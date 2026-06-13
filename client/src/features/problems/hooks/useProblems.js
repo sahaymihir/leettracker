@@ -70,6 +70,15 @@ export const useProblems = () => {
         if (rankDiff !== 0) return rankDiff;
         return getProblemNumber(a) - getProblemNumber(b);
       });
+    } else if (sortBy === 'attempted') {
+      // Most recently attempted first; never-attempted problems sink to the
+      // bottom, ordered by number.
+      filtered.sort((a, b) => {
+        const aTime = a.attemptedAt ? new Date(a.attemptedAt).getTime() : 0;
+        const bTime = b.attemptedAt ? new Date(b.attemptedAt).getTime() : 0;
+        if (aTime !== bTime) return bTime - aTime;
+        return getProblemNumber(a) - getProblemNumber(b);
+      });
     } else {
       filtered.sort((a, b) => getProblemNumber(a) - getProblemNumber(b));
     }
@@ -117,6 +126,9 @@ export const useProblems = () => {
               solved: res.data.solved,
               status: res.data.status,
               solvedAt: res.data.status === 'solved' ? new Date().toISOString() : null,
+              attemptedAt: res.data.status === 'attempted'
+                ? (p.attemptedAt || new Date().toISOString())
+                : p.attemptedAt,
             }
           : p
       ));

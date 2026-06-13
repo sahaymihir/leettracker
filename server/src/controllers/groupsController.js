@@ -188,6 +188,7 @@ export const getGroupDetail = async (req, res) => {
               solved: progress.solved || 0,
               status: progress.status || (progress.solved === 1 ? 'solved' : 'unsolved'),
               solvedAt: progress.solvedAt || null,
+              attemptedAt: progress.attemptedAt || null,
             };
           });
 
@@ -214,6 +215,7 @@ export const getGroupDetail = async (req, res) => {
             solved: progress ? progress.solved : 0,
             status: progress?.status || 'unsolved',
             solvedAt: progress?.solvedAt || null,
+            attemptedAt: progress?.attemptedAt || null,
           };
         });
 

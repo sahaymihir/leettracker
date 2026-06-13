@@ -118,6 +118,17 @@ export const useGroupDetail = () => {
         if (rankDiff !== 0) return rankDiff;
         return a.leetcode_number - b.leetcode_number;
       });
+    } else if (sortBy === 'attempted') {
+      // Most recently attempted by me first; never-attempted sink to the bottom.
+      const myAttemptedAt = (p) => {
+        const m = myStatusOf(p);
+        return m?.attemptedAt ? new Date(m.attemptedAt).getTime() : 0;
+      };
+      filtered.sort((a, b) => {
+        const diff = myAttemptedAt(b) - myAttemptedAt(a);
+        if (diff !== 0) return diff;
+        return a.leetcode_number - b.leetcode_number;
+      });
     } else {
       filtered.sort((a, b) => a.leetcode_number - b.leetcode_number);
     }
@@ -187,6 +198,9 @@ export const useGroupDetail = () => {
                     status: nextStatus,
                     solved: nextStatus === 'solved' ? 1 : 0,
                     solvedAt: nextStatus === 'solved' ? new Date().toISOString() : null,
+                    attemptedAt: nextStatus === 'attempted'
+                      ? (memberStatus.attemptedAt || new Date().toISOString())
+                      : memberStatus.attemptedAt,
                   }
                 : memberStatus
             )),
