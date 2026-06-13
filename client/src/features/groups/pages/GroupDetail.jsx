@@ -9,6 +9,7 @@ import GroupFilters from '@/features/groups/components/GroupFilters';
 import GroupProblemTable from '@/features/groups/components/GroupProblemTable';
 import AddMemberDialog from '@/features/groups/components/AddMemberDialog';
 import DeleteGroupDialog from '@/features/groups/components/DeleteGroupDialog';
+import RenameGroupDialog from '@/features/groups/components/RenameGroupDialog';
 import InviteLinkDialog from '@/features/groups/components/InviteLinkDialog';
 
 const GroupDetail = () => {
@@ -36,6 +37,7 @@ const GroupDetail = () => {
         onAddMember={detail.openAddMember}
         onAddFromProblemset={() => detail.setShowAddFromProblemset(true)}
         onAddProblem={add.openAddModal}
+        onRenameGroup={detail.openRename}
         onDeleteGroup={detail.openDeleteGroup}
       />
 
@@ -106,6 +108,16 @@ const GroupDetail = () => {
         error={detail.deleteError}
         isDeleting={detail.isDeletingGroup}
         onDelete={detail.handleDeleteGroup}
+      />
+
+      <RenameGroupDialog
+        open={detail.showRename}
+        onClose={detail.closeRename}
+        value={detail.renameValue}
+        setValue={detail.setRenameValue}
+        error={detail.renameError}
+        isRenaming={detail.isRenaming}
+        onRename={detail.handleRenameGroup}
       />
 
       <InviteLinkDialog

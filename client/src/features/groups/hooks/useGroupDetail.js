@@ -6,6 +6,7 @@ import {
   addProblemToGroup,
   bulkAddProblemsToGroup,
   deleteGroup,
+  updateGroupName,
   getGroupInvite,
   rotateGroupInvite,
 } from '@/features/groups/services/groupsApi';
@@ -56,6 +57,12 @@ export const useGroupDetail = () => {
   const [deleteConfirmName, setDeleteConfirmName] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [isDeletingGroup, setIsDeletingGroup] = useState(false);
+
+  // Rename group.
+  const [showRename, setShowRename] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState('');
+  const [isRenaming, setIsRenaming] = useState(false);
 
   const fetchGroup = useCallback(() => {
     return getGroup(id)
@@ -332,6 +339,36 @@ export const useGroupDetail = () => {
     return { addedCount: succeeded.length, failedCount };
   };
 
+  const openRename = () => {
+    setRenameValue(group?.name || '');
+    setRenameError('');
+    setShowRename(true);
+  };
+
+  const closeRename = () => {
+    if (isRenaming) return;
+    setShowRename(false);
+    setRenameError('');
+  };
+
+  const handleRenameGroup = async () => {
+    const name = renameValue.trim();
+    if (!name || isRenaming) return;
+    if (name === group?.name) { setShowRename(false); return; }
+    setRenameError('');
+    setIsRenaming(true);
+    try {
+      await updateGroupName(id, name);
+      setGroup(prev => (prev ? { ...prev, name } : prev));
+      toast({ title: 'Group renamed', description: name, variant: 'success' });
+      setShowRename(false);
+    } catch (err) {
+      setRenameError(err.response?.data?.error || 'Failed to rename group');
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
   const openDeleteGroup = () => {
     setDeleteConfirmName('');
     setDeleteError('');
@@ -421,5 +458,14 @@ export const useGroupDetail = () => {
     deleteError,
     isDeletingGroup,
     handleDeleteGroup,
+    // rename group
+    showRename,
+    openRename,
+    closeRename,
+    renameValue,
+    setRenameValue,
+    renameError,
+    isRenaming,
+    handleRenameGroup,
   };
 };

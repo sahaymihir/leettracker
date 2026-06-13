@@ -74,6 +74,13 @@ export const setInviteToken = (groupId, inviteToken) => {
   return updateItem(PK, SK, 'SET inviteToken = :t', { ':t': inviteToken });
 };
 
+// Rename a group's DETAIL row. `name` is a DynamoDB reserved word, so it must be
+// referenced via an expression-attribute-name alias.
+export const updateName = (groupId, name) => {
+  const { PK, SK } = groupKey(groupId);
+  return updateItem(PK, SK, 'SET #n = :n', { ':n': name }, { '#n': 'name' });
+};
+
 export const removeMember = (groupId, userId) => {
   const { PK, SK } = groupMemberKey(groupId, userId);
   return deleteItem(PK, SK);

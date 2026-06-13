@@ -1,4 +1,4 @@
-import { ArrowLeft, Plus, UserPlus, ListPlus, Trash2, Link2 } from 'lucide-react';
+import { ArrowLeft, Plus, UserPlus, ListPlus, Trash2, Link2, Pencil } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 
 const GroupHeader = ({
@@ -9,6 +9,7 @@ const GroupHeader = ({
   onAddMember,
   onAddFromProblemset,
   onAddProblem,
+  onRenameGroup,
   onDeleteGroup,
 }) => (
   <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -39,6 +40,12 @@ const GroupHeader = ({
         <Plus className="w-4 h-4" />
         Add Problem
       </Button>
+      {isGroupCreator && (
+        <Button variant="outline" onClick={onRenameGroup}>
+          <Pencil className="w-4 h-4" />
+          Rename
+        </Button>
+      )}
       {isGroupCreator && (
         <Button variant="destructive" onClick={onDeleteGroup}>
           <Trash2 className="w-4 h-4" />

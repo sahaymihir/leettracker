@@ -576,6 +576,37 @@ export const addProblemToGroup = async (req, res) => {
 };
 
 /**
+ * @name updateGroupController
+ * @description Rename a group (creator only)
+ * @access Private
+ */
+export const updateGroup = async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const name = (req.body?.name || '').trim();
+
+    if (!name) {
+      return res.status(400).json({ error: 'Group name is required' });
+    }
+
+    const detail = await groupsRepo.getDetail(groupId);
+    if (!detail) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    if (detail.createdBy !== req.userId) {
+      return res.status(403).json({ error: 'Only the group creator can rename this group' });
+    }
+
+    await groupsRepo.updateName(groupId, name);
+    res.json({ id: groupId, name });
+  } catch (err) {
+    console.error('Update group error:', err);
+    res.status(500).json({ error: 'Failed to update group' });
+  }
+};
+
+/**
  * @name deleteGroupController
  * @description Delete a group and all its records (creator only, name confirmation required)
  * @access Private
