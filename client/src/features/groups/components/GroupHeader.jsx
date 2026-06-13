@@ -1,4 +1,4 @@
-import { ArrowLeft, Plus, UserPlus, ListPlus, Trash2, Link2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Plus, UserPlus, ListPlus, Trash2, Link2 } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 
 const GroupHeader = ({
@@ -7,7 +7,6 @@ const GroupHeader = ({
   onBack,
   onInvite,
   onAddMember,
-  onAddStarterList,
   onAddFromProblemset,
   onAddProblem,
   onDeleteGroup,
@@ -31,10 +30,6 @@ const GroupHeader = ({
       <Button variant="outline" onClick={onAddMember}>
         <UserPlus className="w-4 h-4" />
         Add Member
-      </Button>
-      <Button variant="outline" onClick={onAddStarterList}>
-        <Sparkles className="w-4 h-4" />
-        Starter List
       </Button>
       <Button variant="outline" onClick={onAddFromProblemset}>
         <ListPlus className="w-4 h-4" />

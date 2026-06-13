@@ -54,7 +54,14 @@ const Groups = () => {
         groupName={groups.groupName}
         setGroupName={groups.setGroupName}
         error={groups.error}
-        onCreate={groups.handleCreate}
+        creating={groups.creating}
+        starterPacks={groups.starterPacks}
+        selectedPack={groups.selectedPack}
+        setSelectedPack={groups.setSelectedPack}
+        onCreate={async () => {
+          const newId = await groups.handleCreate();
+          if (newId) navigate(`/groups/${newId}`);
+        }}
       />
     </div>
   );
