@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
 import { Search, Loader2, FolderOpen } from 'lucide-react';
-import { listProblems } from '@/features/problems/services/problemsApi';
+import { useAddFromProblemset } from '@/features/groups/hooks/useAddFromProblemset';
 import ProblemRow from '@/features/groups/components/ProblemRow';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
@@ -13,106 +12,27 @@ import {
 } from '@/shared/ui/dialog';
 
 const AddFromProblemsetModal = ({ isOpen, onClose, onAddProblem, onAddProblems, existingProblems = [] }) => {
-  const [problems, setProblems] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [error, setError] = useState('');
-  const [selectedIds, setSelectedIds] = useState([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [confirmCount, setConfirmCount] = useState(null);
-  const [pendingProblems, setPendingProblems] = useState(null);
-
-  // Fetch user problemset when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setSearchQuery('');
-      setError('');
-      setSelectedIds([]);
-      setConfirmCount(null);
-      setPendingProblems(null);
-      loadProblems();
-    }
-  }, [isOpen]);
-
-  const loadProblems = async () => {
-    setLoading(true);
-    try {
-      const res = await listProblems();
-      setProblems(res.data);
-    } catch (err) {
-      console.error('Failed to load problems:', err);
-      setError('Failed to load your problems.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Client-side filtering
-  const filteredProblems = useMemo(() => {
-    if (!searchQuery.trim()) return problems;
-
-    const query = searchQuery.toLowerCase();
-    return problems.filter(p => {
-      const titleMatch = p.title?.toLowerCase().includes(query);
-      const diffMatch = p.difficulty?.toLowerCase().includes(query);
-      const patternMatch = p.pattern_name?.toLowerCase().includes(query);
-      const topicMatch = p.topics?.some(topic => topic.toLowerCase().includes(query));
-
-      return titleMatch || diffMatch || patternMatch || topicMatch;
-    });
-  }, [problems, searchQuery]);
-
-  // Convert existing problems array to a Set of IDs for quick lookup
-  const existingSet = useMemo(() => new Set(existingProblems.map(p => p.id)), [existingProblems]);
-  const selectableProblems = filteredProblems.filter(problem => !existingSet.has(problem.id));
-  const selectedCount = selectedIds.filter(id => !existingSet.has(id)).length;
-
-  const toggleSelected = (problemId) => {
-    setSelectedIds(prev => (
-      prev.includes(problemId)
-        ? prev.filter(id => id !== problemId)
-        : [...prev, problemId]
-    ));
-  };
-
-  const requestAdd = (problemsToAdd) => {
-    if (!problemsToAdd.length || !onAddProblems) return;
-    setPendingProblems(problemsToAdd);
-    setConfirmCount(problemsToAdd.length);
-  };
-
-  const handleConfirmedAdd = async () => {
-    const problemsToAdd = pendingProblems;
-    setConfirmCount(null);
-    setPendingProblems(null);
-    if (!problemsToAdd?.length) return;
-
-    setIsSubmitting(true);
-    setError('');
-
-    try {
-      const result = await onAddProblems(problemsToAdd);
-      setSelectedIds([]);
-
-      if (result?.failedCount) {
-        setError(`${result.failedCount} problem${result.failedCount === 1 ? '' : 's'} could not be added.`);
-      } else {
-        onClose();
-      }
-    } catch {
-      setError('Failed to add selected problems.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleAddAll = () => {
-    requestAdd(problems.filter(problem => !existingSet.has(problem.id)));
-  };
-
-  const handleAddCurrentSelection = () => {
-    requestAdd(problems.filter(problem => selectedIds.includes(problem.id) && !existingSet.has(problem.id)));
-  };
+  const {
+    loading,
+    filteredProblems,
+    existingSet,
+    selectableProblems,
+    hasAddableProblems,
+    searchQuery,
+    setSearchQuery,
+    selectedIds,
+    selectedCount,
+    toggleSelected,
+    selectVisible,
+    clearSelection,
+    isSubmitting,
+    error,
+    confirmCount,
+    cancelConfirm,
+    handleConfirmedAdd,
+    handleAddAll,
+    handleAddCurrentSelection,
+  } = useAddFromProblemset({ isOpen, onClose, onAddProblems, existingProblems });
 
   return (
     <>
@@ -148,7 +68,7 @@ const AddFromProblemsetModal = ({ isOpen, onClose, onAddProblem, onAddProblems, 
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setSelectedIds(selectableProblems.map(problem => problem.id))}
+                  onClick={selectVisible}
                   disabled={!selectableProblems.length || isSubmitting}
                 >
                   Select Visible
@@ -156,7 +76,7 @@ const AddFromProblemsetModal = ({ isOpen, onClose, onAddProblem, onAddProblems, 
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setSelectedIds([])}
+                  onClick={clearSelection}
                   disabled={!selectedCount || isSubmitting}
                 >
                   Clear
@@ -166,7 +86,7 @@ const AddFromProblemsetModal = ({ isOpen, onClose, onAddProblem, onAddProblems, 
                   size="sm"
                   className="border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
                   onClick={handleAddAll}
-                  disabled={!problems.some(problem => !existingSet.has(problem.id)) || isSubmitting}
+                  disabled={!hasAddableProblems || isSubmitting}
                 >
                   Add All Not Added
                 </Button>
@@ -222,7 +142,7 @@ const AddFromProblemsetModal = ({ isOpen, onClose, onAddProblem, onAddProblems, 
       </Dialog>
 
       {/* Confirm bulk add */}
-      <Dialog open={confirmCount !== null} onOpenChange={(open) => { if (!open) { setConfirmCount(null); setPendingProblems(null); } }}>
+      <Dialog open={confirmCount !== null} onOpenChange={(open) => { if (!open) cancelConfirm(); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Add to group?</DialogTitle>
@@ -231,7 +151,7 @@ const AddFromProblemsetModal = ({ isOpen, onClose, onAddProblem, onAddProblems, 
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => { setConfirmCount(null); setPendingProblems(null); }}>Cancel</Button>
+            <Button variant="outline" onClick={cancelConfirm}>Cancel</Button>
             <Button className="bg-indigo-600 hover:bg-indigo-500" onClick={handleConfirmedAdd}>Add</Button>
           </div>
         </DialogContent>
