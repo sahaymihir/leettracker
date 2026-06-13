@@ -1,9 +1,6 @@
-import { useEffect, useState, useRef } from 'react';
-import { useParams, useSearchParams, useNavigate, Navigate, Link } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { Users, Loader2, AlertCircle, Code2 } from 'lucide-react';
-import { useAuth } from '@/features/auth/hooks/useAuth';
-import { previewGroupInvite, joinGroup } from '@/features/groups/services/groupsApi';
-import { setPostAuthRedirect } from '@/shared/lib/postAuthRedirect';
+import { useJoinGroup } from '@/features/groups/hooks/useJoinGroup';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent } from '@/shared/ui/card';
 
@@ -11,53 +8,16 @@ import { Card, CardContent } from '@/shared/ui/card';
 // Public route — handles the logged-out case by stashing the link and bouncing
 // to login, and the logged-in case by previewing then joining the group.
 const JoinGroup = () => {
-  const { id } = useParams();
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get('token');
-  const { user } = useAuth();
-  const navigate = useNavigate();
-
-  const [preview, setPreview] = useState(null);
-  const [fetchError, setFetchError] = useState('');
-  const [joinError, setJoinError] = useState('');
-  const [joining, setJoining] = useState(false);
-  // Guard the preview effect so it runs once even under StrictMode double-invoke.
-  const loadedRef = useRef(false);
-
-  // A missing token is knowable at render time, so derive it rather than setting
-  // state in the effect. Join errors and fetch errors are surfaced together.
-  const error = (!token ? 'This invite link is missing its token.' : '') || fetchError || joinError;
-
-  useEffect(() => {
-    // Only the logged-in branch with a token loads a preview; the logged-out
-    // branch redirects and the missing-token case is handled by `error` above.
-    if (!user || !token || loadedRef.current) return;
-    loadedRef.current = true;
-
-    previewGroupInvite(id, token)
-      .then((res) => setPreview(res.data))
-      .catch((err) => setFetchError(err.response?.data?.error || 'This invite link is invalid or has expired.'));
-  }, [id, token, user]);
+  const join = useJoinGroup();
 
   // Logged out: remember where we were headed, then send to login. Registering
   // or signing in will resume here via consumePostAuthRedirect.
-  if (!user) {
-    const target = `/groups/${id}/join${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-    setPostAuthRedirect(target);
+  if (!join.user) {
+    join.rememberRedirect();
     return <Navigate to="/login" replace />;
   }
 
-  const handleJoin = async () => {
-    setJoining(true);
-    setJoinError('');
-    try {
-      await joinGroup(id, token);
-      navigate(`/groups/${id}`, { replace: true });
-    } catch (err) {
-      setJoinError(err.response?.data?.error || 'Failed to join the group.');
-      setJoining(false);
-    }
-  };
+  const { preview, error, joining } = join;
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden flex items-center justify-center p-6 animate-fade-in">
@@ -103,11 +63,11 @@ const JoinGroup = () => {
                 </div>
 
                 {preview.already_member ? (
-                  <Button size="lg" className="w-full font-semibold" onClick={() => navigate(`/groups/${id}`, { replace: true })}>
+                  <Button size="lg" className="w-full font-semibold" onClick={join.goToGroup}>
                     Open group
                   </Button>
                 ) : (
-                  <Button size="lg" className="w-full font-semibold" onClick={handleJoin} disabled={joining}>
+                  <Button size="lg" className="w-full font-semibold" onClick={join.handleJoin} disabled={joining}>
                     {joining ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
