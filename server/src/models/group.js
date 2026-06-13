@@ -13,6 +13,7 @@ import {
  * @property {string} createdBy           userId (email)
  * @property {string} createdByUsername
  * @property {string} createdAt           ISO timestamp
+ * @property {string} [inviteToken]       opaque token for shareable join links
  */
 
 /**
@@ -41,12 +42,13 @@ import {
 export { groupKey, groupMemberKey, groupProblemKey, userGroupIndexKey };
 
 /** @returns {Group} */
-export const makeGroup = ({ groupId, name, createdBy, createdByUsername, createdAt }) => ({
+export const makeGroup = ({ groupId, name, createdBy, createdByUsername, createdAt, inviteToken }) => ({
   ...groupKey(groupId),
   name,
   createdBy,
   createdByUsername,
   createdAt,
+  inviteToken,
 });
 
 /** @returns {GroupMember} */

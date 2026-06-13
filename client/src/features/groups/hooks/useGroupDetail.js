@@ -6,6 +6,9 @@ import {
   addProblemToGroup,
   bulkAddProblemsToGroup,
   deleteGroup,
+  getGroupInvite,
+  rotateGroupInvite,
+  importStarterList,
 } from '@/features/groups/services/groupsApi';
 import { updateProblemStatus } from '@/features/problems/services/problemsApi';
 import { useAuth } from '@/features/auth/hooks/useAuth';
@@ -34,6 +37,14 @@ export const useGroupDetail = () => {
 
   // Add-from-problemset modal.
   const [showAddFromProblemset, setShowAddFromProblemset] = useState(false);
+
+  // Invite link.
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteToken, setInviteToken] = useState(null);
+  const [isRotatingInvite, setIsRotatingInvite] = useState(false);
+
+  // Starter lists.
+  const [showStarterList, setShowStarterList] = useState(false);
 
   // Filters / sort / pagination.
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -227,6 +238,59 @@ export const useGroupDetail = () => {
     }
   };
 
+  const openInvite = async () => {
+    setShowInvite(true);
+    if (inviteToken) return; // already loaded for this group
+    try {
+      const res = await getGroupInvite(id);
+      setInviteToken(res.data.token);
+    } catch {
+      toast({ title: 'Failed to load invite link', variant: 'destructive' });
+    }
+  };
+
+  const closeInvite = () => setShowInvite(false);
+
+  const handleRotateInvite = async () => {
+    setIsRotatingInvite(true);
+    try {
+      const res = await rotateGroupInvite(id);
+      setInviteToken(res.data.token);
+      toast({ title: 'Invite link rotated', description: 'The old link no longer works.', variant: 'success' });
+    } catch {
+      toast({ title: 'Failed to rotate link', variant: 'destructive' });
+    } finally {
+      setIsRotatingInvite(false);
+    }
+  };
+
+  const openStarterList = () => setShowStarterList(true);
+  const closeStarterList = () => setShowStarterList(false);
+
+  // Import a curated list, then merge the returned problems into the group view.
+  // Returns false on failure so the dialog can stay open and surface the error.
+  const handleImportStarterList = async (list) => {
+    try {
+      const res = await importStarterList(id, list.id);
+      (res.data?.added || []).forEach((addedProblem) => upsertGroupProblem(addedProblem, 'unsolved'));
+
+      const { addedCount = 0, alreadyInGroupCount = 0 } = res.data || {};
+      if (addedCount > 0) {
+        toast({
+          title: `${list.name} imported`,
+          description: `${addedCount} problem${addedCount === 1 ? '' : 's'} added${alreadyInGroupCount ? `, ${alreadyInGroupCount} already in group` : ''}.`,
+          variant: 'success',
+        });
+      } else {
+        toast({ title: 'Nothing to add', description: `All ${list.name} problems are already in this group.` });
+      }
+      return res.data;
+    } catch (err) {
+      toast({ title: 'Failed to import list', description: err.response?.data?.error || '', variant: 'destructive' });
+      return false;
+    }
+  };
+
   const handleAddFromProblemset = async (problem) => {
     try {
       const res = await addProblemToGroup(id, problem.id);
@@ -372,6 +436,18 @@ export const useGroupDetail = () => {
     setShowAddFromProblemset,
     handleAddFromProblemset,
     handleAddMultipleFromProblemset,
+    // invite link
+    showInvite,
+    openInvite,
+    closeInvite,
+    inviteToken,
+    isRotatingInvite,
+    handleRotateInvite,
+    // starter lists
+    showStarterList,
+    openStarterList,
+    closeStarterList,
+    handleImportStarterList,
     // delete group
     showDeleteGroup,
     openDeleteGroup,

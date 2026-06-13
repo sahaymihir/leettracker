@@ -1,4 +1,4 @@
-import { FileQuestion } from 'lucide-react';
+import { FileQuestion, Sparkles } from 'lucide-react';
 import TopicTags from '@/shared/components/TopicTags';
 import { StatusCheckbox } from '@/shared/components/StatusControls';
 import { cn } from '@/shared/lib/utils';
@@ -35,19 +35,27 @@ const GroupProblemTable = ({
   onToggleTopics,
   onSetStatus,
   onShowMore,
+  onAddStarterList,
 }) => {
   if (filteredCount === 0) {
+    const isEmptyGroup = activePattern === 'all';
     return (
       <Card className="p-12 flex flex-col items-center justify-center text-center">
         <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mb-5">
           <FileQuestion className="w-7 h-7" />
         </div>
         <h3 className="text-xl font-semibold text-white mb-2">
-          {activePattern === 'all' ? 'No problems in this group' : `No "${activePattern}" problems`}
+          {isEmptyGroup ? 'No problems in this group' : `No "${activePattern}" problems`}
         </h3>
         <p className="text-muted-foreground">
-          {activePattern === 'all' ? 'Add problems to start tracking progress together!' : 'Try selecting a different pattern.'}
+          {isEmptyGroup ? 'Add problems to start tracking progress together!' : 'Try selecting a different pattern.'}
         </p>
+        {isEmptyGroup && onAddStarterList && (
+          <Button className="mt-6" onClick={onAddStarterList}>
+            <Sparkles className="w-4 h-4" />
+            Import a starter list
+          </Button>
+        )}
       </Card>
     );
   }

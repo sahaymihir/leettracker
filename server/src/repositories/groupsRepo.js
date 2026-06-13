@@ -1,4 +1,4 @@
-import { getItem, putItem, queryItems, scanItems, deleteItem } from '../db/dynamodb.js';
+import { getItem, putItem, queryItems, scanItems, deleteItem, updateItem } from '../db/dynamodb.js';
 import {
   groupKey,
   groupPk,
@@ -67,6 +67,12 @@ export const saveMember = (member) => putItem(makeGroupMember(member));
 export const saveProblem = (groupProblem) => putItem(makeGroupProblem(groupProblem));
 
 export const saveUserGroupIndex = (index) => putItem(makeUserGroupIndex(index));
+
+// Set (or rotate) a group's shareable invite token on the DETAIL row.
+export const setInviteToken = (groupId, inviteToken) => {
+  const { PK, SK } = groupKey(groupId);
+  return updateItem(PK, SK, 'SET inviteToken = :t', { ':t': inviteToken });
+};
 
 export const removeMember = (groupId, userId) => {
   const { PK, SK } = groupMemberKey(groupId, userId);

@@ -9,6 +9,8 @@ import GroupFilters from '@/features/groups/components/GroupFilters';
 import GroupProblemTable from '@/features/groups/components/GroupProblemTable';
 import AddMemberDialog from '@/features/groups/components/AddMemberDialog';
 import DeleteGroupDialog from '@/features/groups/components/DeleteGroupDialog';
+import InviteLinkDialog from '@/features/groups/components/InviteLinkDialog';
+import StarterListDialog from '@/features/groups/components/StarterListDialog';
 
 const GroupDetail = () => {
   const detail = useGroupDetail();
@@ -31,7 +33,9 @@ const GroupDetail = () => {
         group={group}
         isGroupCreator={detail.isGroupCreator}
         onBack={() => detail.navigate('/groups')}
+        onInvite={detail.openInvite}
         onAddMember={detail.openAddMember}
+        onAddStarterList={detail.openStarterList}
         onAddFromProblemset={() => detail.setShowAddFromProblemset(true)}
         onAddProblem={add.openAddModal}
         onDeleteGroup={detail.openDeleteGroup}
@@ -67,6 +71,7 @@ const GroupDetail = () => {
         onToggleTopics={detail.toggleExpandedTopics}
         onSetStatus={detail.handleSetStatus}
         onShowMore={detail.showMore}
+        onAddStarterList={detail.openStarterList}
       />
 
       <AddMemberDialog
@@ -104,6 +109,22 @@ const GroupDetail = () => {
         error={detail.deleteError}
         isDeleting={detail.isDeletingGroup}
         onDelete={detail.handleDeleteGroup}
+      />
+
+      <InviteLinkDialog
+        open={detail.showInvite}
+        onClose={detail.closeInvite}
+        groupId={detail.groupId}
+        token={detail.inviteToken}
+        isGroupCreator={detail.isGroupCreator}
+        isRotating={detail.isRotatingInvite}
+        onRotate={detail.handleRotateInvite}
+      />
+
+      <StarterListDialog
+        open={detail.showStarterList}
+        onClose={detail.closeStarterList}
+        onImport={detail.handleImportStarterList}
       />
     </div>
   );

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Code2, Loader2, AlertCircle, Mail, Lock } from 'lucide-react';
 import { useAuth } from '@/features/auth/hooks/useAuth';
+import { consumePostAuthRedirect } from '@/shared/lib/postAuthRedirect';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
@@ -14,13 +15,13 @@ const Login = () => {
   const navigate = useNavigate();
 
   if (user) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={consumePostAuthRedirect() || '/dashboard'} replace />;
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (await handleLogin({ email, password })) {
-      navigate('/dashboard');
+      navigate(consumePostAuthRedirect() || '/dashboard');
     }
   };
 

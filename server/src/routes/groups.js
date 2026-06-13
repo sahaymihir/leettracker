@@ -5,6 +5,12 @@ import {
   createGroup,
   getGroupDetail,
   addMember,
+  getInvite,
+  rotateInvite,
+  previewInvite,
+  joinGroup,
+  listStarterListsController,
+  importStarterList,
   bulkAddProblemsToGroup,
   addProblemToGroup,
   deleteGroup,
@@ -28,11 +34,54 @@ router.get('/', auth, listGroups);
 router.post('/', auth, createGroup);
 
 /**
+ * @route GET /api/groups/starter-lists
+ * @description List curated starter lists (Blind 75, NeetCode 150)
+ * @access Private
+ * @note Registered before '/:id' so the static segment is not captured as an id.
+ */
+router.get('/starter-lists', auth, listStarterListsController);
+
+/**
  * @route GET /api/groups/:id
  * @description Get group detail with problems and member statuses
  * @access Private
  */
 router.get('/:id', auth, getGroupDetail);
+
+/**
+ * @route GET /api/groups/:id/invite
+ * @description Get the group's shareable invite token (members only)
+ * @access Private
+ */
+router.get('/:id/invite', auth, getInvite);
+
+/**
+ * @route POST /api/groups/:id/invite/rotate
+ * @description Rotate the invite token, invalidating old links (creator only)
+ * @access Private
+ */
+router.post('/:id/invite/rotate', auth, rotateInvite);
+
+/**
+ * @route GET /api/groups/:id/invite/preview
+ * @description Minimal group info for the join screen, gated on a valid token
+ * @access Private
+ */
+router.get('/:id/invite/preview', auth, previewInvite);
+
+/**
+ * @route POST /api/groups/:id/join
+ * @description Join a group via invite token (idempotent)
+ * @access Private
+ */
+router.post('/:id/join', auth, joinGroup);
+
+/**
+ * @route POST /api/groups/:id/starter-lists/:listId/import
+ * @description Import a curated starter list into the group (members only)
+ * @access Private
+ */
+router.post('/:id/starter-lists/:listId/import', auth, importStarterList);
 
 /**
  * @route POST /api/groups/:id/members

@@ -17,3 +17,22 @@ export const addProblemToGroup = (groupId, problemId) =>
 
 export const bulkAddProblemsToGroup = (groupId, problemIds) =>
   api.post(`/groups/${groupId}/problems/bulk`, { problem_ids: problemIds });
+
+// --- invite links ---
+
+export const getGroupInvite = (groupId) => api.get(`/groups/${groupId}/invite`);
+
+export const rotateGroupInvite = (groupId) => api.post(`/groups/${groupId}/invite/rotate`);
+
+export const previewGroupInvite = (groupId, token) =>
+  api.get(`/groups/${groupId}/invite/preview`, { params: { token } });
+
+export const joinGroup = (groupId, token) =>
+  api.post(`/groups/${groupId}/join`, { token });
+
+// --- curated starter lists ---
+
+export const listStarterLists = () => api.getCached('/groups/starter-lists', {}, 300000);
+
+export const importStarterList = (groupId, listId) =>
+  api.post(`/groups/${groupId}/starter-lists/${listId}/import`);

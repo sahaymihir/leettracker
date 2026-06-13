@@ -11,6 +11,7 @@ const Dashboard = lazy(() => import('@/features/dashboard/pages/Dashboard'));
 const Problems = lazy(() => import('@/features/problems/pages/Problems'));
 const Groups = lazy(() => import('@/features/groups/pages/Groups'));
 const GroupDetail = lazy(() => import('@/features/groups/pages/GroupDetail'));
+const JoinGroup = lazy(() => import('@/features/groups/pages/JoinGroup'));
 
 const PageFallback = () => (
   <div className="flex items-center justify-center gap-2 min-h-[50vh] text-muted-foreground">
@@ -34,6 +35,9 @@ const AppRoutes = () => (
       <Route path="/groups" element={
         <ProtectedRoute><Groups /></ProtectedRoute>
       } />
+      {/* Public: JoinGroup gates auth itself so it can capture the invite link
+          before redirecting a logged-out visitor to login. */}
+      <Route path="/groups/:id/join" element={<JoinGroup />} />
       <Route path="/groups/:id" element={
         <ProtectedRoute><GroupDetail /></ProtectedRoute>
       } />

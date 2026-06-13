@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import * as groupsRepo from '../repositories/groupsRepo.js';
+import { listStarterLists, getStarterList } from '../data/starterLists.js';
+import { ensureProblemsExist } from '../utils/ensureProblemsExist.js';
 import * as problemsRepo from '../repositories/problemsRepo.js';
 import * as progressRepo from '../repositories/progressRepo.js';
 import * as usersRepo from '../repositories/usersRepo.js';
@@ -101,6 +103,7 @@ export const createGroup = async (req, res) => {
     const groupId = uuidv4().slice(0, 8); // Short ID
     const trimmedName = name.trim();
     const now = new Date().toISOString();
+    const inviteToken = uuidv4().replace(/-/g, ''); // Shareable join-link token
 
     // Create group detail
     await groupsRepo.saveGroup({
@@ -109,6 +112,7 @@ export const createGroup = async (req, res) => {
       createdBy: req.userId,
       createdByUsername: req.username,
       createdAt: now,
+      inviteToken,
     });
 
     // Add creator as member
@@ -290,6 +294,230 @@ export const addMember = async (req, res) => {
   }
 };
 
+// Return a group's invite token, generating + persisting one if the group
+// predates the invite-link feature (or had its token cleared).
+const ensureInviteToken = async (groupId, detail) => {
+  if (detail?.inviteToken) return detail.inviteToken;
+  const inviteToken = uuidv4().replace(/-/g, '');
+  await groupsRepo.setInviteToken(groupId, inviteToken);
+  return inviteToken;
+};
+
+/**
+ * @name getInviteController
+ * @description Return the group's shareable invite token (members only)
+ * @access Private
+ */
+export const getInvite = async (req, res) => {
+  try {
+    const groupId = req.params.id;
+
+    const membership = await groupsRepo.getMember(groupId, req.userId);
+    if (!membership) return res.status(403).json({ error: 'Not a member of this group' });
+
+    const detail = await groupsRepo.getDetail(groupId);
+    if (!detail) return res.status(404).json({ error: 'Group not found' });
+
+    const token = await ensureInviteToken(groupId, detail);
+    res.json({ token });
+  } catch (err) {
+    console.error('Get invite error:', err);
+    res.status(500).json({ error: 'Failed to load invite link' });
+  }
+};
+
+/**
+ * @name rotateInviteController
+ * @description Issue a new invite token, invalidating existing links (creator only)
+ * @access Private
+ */
+export const rotateInvite = async (req, res) => {
+  try {
+    const groupId = req.params.id;
+
+    const detail = await groupsRepo.getDetail(groupId);
+    if (!detail) return res.status(404).json({ error: 'Group not found' });
+    if (detail.createdBy !== req.userId) {
+      return res.status(403).json({ error: 'Only the group creator can rotate the invite link' });
+    }
+
+    const token = uuidv4().replace(/-/g, '');
+    await groupsRepo.setInviteToken(groupId, token);
+    res.json({ token });
+  } catch (err) {
+    console.error('Rotate invite error:', err);
+    res.status(500).json({ error: 'Failed to rotate invite link' });
+  }
+};
+
+/**
+ * @name previewInviteController
+ * @description Minimal group info for the join screen, gated on a valid token
+ * @access Private
+ */
+export const previewInvite = async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const token = req.query.token;
+
+    const detail = await groupsRepo.getDetail(groupId);
+    if (!detail) return res.status(404).json({ error: 'Group not found' });
+
+    if (!token || token !== detail.inviteToken) {
+      return res.status(403).json({ error: 'Invalid or expired invite link' });
+    }
+
+    const members = await groupsRepo.listMembers(groupId);
+    const alreadyMember = members.some((m) => m.SK.replace('MEMBER#', '') === req.userId);
+
+    res.json({
+      id: groupId,
+      name: detail.name,
+      creator_name: detail.createdByUsername,
+      member_count: members.length,
+      already_member: alreadyMember,
+    });
+  } catch (err) {
+    console.error('Preview invite error:', err);
+    res.status(500).json({ error: 'Failed to load invite' });
+  }
+};
+
+/**
+ * @name joinGroupController
+ * @description Join a group via a shareable invite token. Idempotent: an existing
+ *   member gets a success response, not an error.
+ * @access Private
+ */
+export const joinGroup = async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const { token } = req.body;
+
+    const detail = await groupsRepo.getDetail(groupId);
+    if (!detail) return res.status(404).json({ error: 'Group not found' });
+
+    if (!token || token !== detail.inviteToken) {
+      return res.status(403).json({ error: 'Invalid or expired invite link' });
+    }
+
+    const existing = await groupsRepo.getMember(groupId, req.userId);
+    if (!existing) {
+      const now = new Date().toISOString();
+      await groupsRepo.saveMember({
+        groupId,
+        userId: req.userId,
+        username: req.username,
+        joinedAt: now,
+      });
+      await groupsRepo.saveUserGroupIndex({
+        userId: req.userId,
+        groupId,
+        groupName: detail.name,
+      });
+    }
+
+    res.json({ id: groupId, name: detail.name, joined: !existing });
+  } catch (err) {
+    console.error('Join group error:', err);
+    res.status(500).json({ error: 'Failed to join group' });
+  }
+};
+
+// Shared core for adding a set of problem numbers to a group: seeds any missing
+// PROBLEM# rows from the dataset, skips numbers already in the group, and adds
+// the rest. Returns the same shape the bulk-add client already consumes.
+const addProblemNumbersToGroup = async (groupId, rawNumbers, userId) => {
+  const problemIds = [...new Set(
+    rawNumbers
+      .map((problemId) => parseInt(problemId, 10))
+      .filter((problemId) => Number.isInteger(problemId) && problemId > 0)
+  )];
+
+  // Seed any problems missing from the shared PROBLEM# table so dataset-known
+  // numbers aren't silently dropped (e.g. a brand-new group importing Blind 75).
+  await ensureProblemsExist(problemIds, userId);
+
+  const existingGroupProblems = await groupsRepo.listProblems(groupId);
+  const existingIds = new Set(
+    existingGroupProblems.map((item) => parseInt(item.SK.replace('PROBLEM#', ''), 10))
+  );
+
+  const problemDetails = await problemsRepo.getManyByNumbers(problemIds);
+  const problemsById = new Map(
+    problemDetails.map((problem) => [problem.leetcodeNumber, problem])
+  );
+
+  const added = [];
+  const failed = [];
+  let alreadyInGroupCount = 0;
+  const addedAt = new Date().toISOString();
+
+  for (const problemId of problemIds) {
+    if (existingIds.has(problemId)) {
+      alreadyInGroupCount += 1;
+      continue;
+    }
+
+    const problem = problemsById.get(problemId);
+    if (!problem) {
+      failed.push({ problem_id: problemId, error: 'Problem not found' });
+      continue;
+    }
+
+    await groupsRepo.saveProblem({ groupId, num: problemId, addedBy: userId, addedAt });
+
+    existingIds.add(problemId);
+    added.push(serializeGroupProblem(problem));
+  }
+
+  return {
+    added,
+    addedCount: added.length,
+    alreadyInGroupCount,
+    failedCount: failed.length,
+    failed,
+  };
+};
+
+/**
+ * @name listStarterListsController
+ * @description List the curated starter lists available for one-click import
+ * @access Private
+ */
+export const listStarterListsController = async (req, res) => {
+  try {
+    res.json(listStarterLists());
+  } catch (err) {
+    console.error('List starter lists error:', err);
+    res.status(500).json({ error: 'Failed to load starter lists' });
+  }
+};
+
+/**
+ * @name importStarterListController
+ * @description Import a curated starter list's problems into a group (members only)
+ * @access Private
+ */
+export const importStarterList = async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const { listId } = req.params;
+
+    const membership = await groupsRepo.getMember(groupId, req.userId);
+    if (!membership) return res.status(403).json({ error: 'Not a member of this group' });
+
+    const list = getStarterList(listId);
+    if (!list) return res.status(404).json({ error: 'Starter list not found' });
+
+    const result = await addProblemNumbersToGroup(groupId, list.numbers, req.userId);
+    res.json({ list: { id: list.id, name: list.name }, ...result });
+  } catch (err) {
+    console.error('Import starter list error:', err);
+    res.status(500).json({ error: 'Failed to import starter list' });
+  }
+};
+
 /**
  * @name bulkAddProblemsToGroupController
  * @description Add multiple problems to a group, skipping duplicates
@@ -299,56 +527,13 @@ export const bulkAddProblemsToGroup = async (req, res) => {
   try {
     const groupId = req.params.id;
     const rawProblemIds = Array.isArray(req.body?.problem_ids) ? req.body.problem_ids : [];
-    const problemIds = [...new Set(
-      rawProblemIds
-        .map((problemId) => parseInt(problemId, 10))
-        .filter((problemId) => Number.isInteger(problemId) && problemId > 0)
-    )];
 
-    if (problemIds.length === 0) {
+    if (!rawProblemIds.length) {
       return res.status(400).json({ error: 'problem_ids must be a non-empty array' });
     }
 
-    const existingGroupProblems = await groupsRepo.listProblems(groupId);
-    const existingIds = new Set(
-      existingGroupProblems.map((item) => parseInt(item.SK.replace('PROBLEM#', ''), 10))
-    );
-
-    const problemDetails = await problemsRepo.getManyByNumbers(problemIds);
-    const problemsById = new Map(
-      problemDetails.map((problem) => [problem.leetcodeNumber, problem])
-    );
-
-    const added = [];
-    const failed = [];
-    let alreadyInGroupCount = 0;
-    const addedAt = new Date().toISOString();
-
-    for (const problemId of problemIds) {
-      if (existingIds.has(problemId)) {
-        alreadyInGroupCount += 1;
-        continue;
-      }
-
-      const problem = problemsById.get(problemId);
-      if (!problem) {
-        failed.push({ problem_id: problemId, error: 'Problem not found' });
-        continue;
-      }
-
-      await groupsRepo.saveProblem({ groupId, num: problemId, addedBy: req.userId, addedAt });
-
-      existingIds.add(problemId);
-      added.push(serializeGroupProblem(problem));
-    }
-
-    res.json({
-      added,
-      addedCount: added.length,
-      alreadyInGroupCount,
-      failedCount: failed.length,
-      failed,
-    });
+    const result = await addProblemNumbersToGroup(groupId, rawProblemIds, req.userId);
+    res.json(result);
   } catch (err) {
     console.error('Bulk add group problems error:', err);
     res.status(500).json({ error: 'Failed to add problems to group' });
