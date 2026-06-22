@@ -251,16 +251,71 @@ This is a **separate Lambda function** that runs once per day to back up all dat
 
 ---
 
-## Step 7: Deploy Frontend to Vercel
+## Step 7: Create Auto-Sync Lambda
 
-### 7a. Update Frontend API URL
+This is a **separate Lambda function** that runs **hourly** to sync each user's recent LeetCode activity according to their saved cadence (`syncPreference`). A single hourly schedule drives every cadence — the per-user "is this user due?" decision lives in the code ([`server/src/services/autoSyncRunner.js`](server/src/services/autoSyncRunner.js)), not in EventBridge.
+
+> Users with `syncPreference = manual` (the default) are skipped. `end_of_day` fires once per day around 23:00 IST; `every_12h` fires when ~12h have elapsed since the user's last sync. Auto-sync imports problems but does **not** add them to groups (group targeting is a per-device, client-side choice) — the Profile page **Sync now** action covers that case.
+
+### 7a. Create Function
+
+1. Go to [Lambda Console](https://console.aws.amazon.com/lambda)
+2. Click **Create function**
+3. Settings:
+   - **Function name**: `leettracker-autosync`
+   - **Runtime**: Node.js 20.x
+   - **Use an existing role**: Select the same role as `leettracker-api` (it already has DynamoDB access)
+4. Click **Create function**
+
+### 7b. Upload Same Code
+
+1. Upload the **same** `lambda-deploy.zip` file
+2. Go to **Runtime settings** → **Edit**
+3. Set **Handler** to: `lambda-autosync.handler`
+4. Click **Save**
+
+### 7c. Set Environment Variables
+
+1. Add:
+   - `JWT_SECRET` = `your-strong-secret-key-here` (same as the API Lambda)
+   - `DYNAMODB_TABLE` = `LeetTrackerTable`
+   - `AWS_REGION` = `ap-south-1` (if not already provided by the runtime)
+   - *(optional)* `AUTOSYNC_END_OF_DAY_IST_HOUR` = `23` — the IST hour (0–23) at which `end_of_day` users sync; defaults to `23`
+2. Click **Save**
+
+### 7d. Set Timeout & Memory
+
+1. Set **Timeout** to **5 minutes** (the run loops over all due users, each making several LeetCode GraphQL calls)
+2. Set **Memory** to **256 MB**
+3. Click **Save**
+
+### 7e. Add Hourly Schedule (EventBridge)
+
+1. In the `leettracker-autosync` function, go to **Configuration** → **Triggers**
+2. Click **Add trigger**
+3. Select **EventBridge (CloudWatch Events)**
+4. Choose **Create a new rule**:
+   - **Rule name**: `leettracker-hourly-autosync`
+   - **Rule type**: Schedule expression
+   - **Schedule expression**: `rate(1 hour)`
+5. Click **Add**
+
+> ✅ The Lambda runs every hour, scans users, and syncs only those whose cadence is due. Most hourly runs sync nobody (or only `every_12h` users) and finish in well under a second; the end-of-day batch lands in the 23:00 IST hour.
+
+> **Scaling note**: the runner syncs due users sequentially within one invocation. For a few users this is well within the 5-minute timeout. If your user base grows large enough that a single end-of-day batch risks the timeout, split the work (e.g. fan out per-user via SQS/EventBridge) rather than raising the timeout indefinitely.
+
+---
+
+## Step 8: Deploy Frontend to Vercel
+
+### 8a. Update Frontend API URL
 
 Edit `client/.env`:
 ```
 VITE_API_URL=https://abc123def4.execute-api.ap-south-1.amazonaws.com/api
 ```
 
-### 7b. Deploy
+### 8b. Deploy
 
 **Option A: Vercel CLI**
 ```bash
@@ -286,7 +341,7 @@ npx -y vercel --prod
 
 | Service | Free Tier | Your Usage | Cost |
 |---------|-----------|------------|------|
-| **Lambda** | 1M requests + 400,000 GB-seconds/month | ~130 requests/month (100 API + 30 backup) | **$0** |
+| **Lambda** | 1M requests + 400,000 GB-seconds/month | ~850 requests/month (100 API + 30 backup + ~720 hourly auto-sync) | **$0** |
 | **API Gateway** | 1M HTTP API calls/month (12 months) | ~100 calls/month | **$0** |
 | **DynamoDB** | 25 GB storage + 25 RCU + 25 WCU | <1 MB, minimal reads | **$0** |
 | **S3** | 5 GB storage (12 months) | <1 MB of backups | **$0** |

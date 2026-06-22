@@ -1,14 +1,40 @@
 import { useState } from 'react';
-import { User, Loader2 } from 'lucide-react';
+import { User, Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/shared/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select';
+import ImportProblemsDialog from '@/features/problems/components/ImportProblemsDialog';
+
+const SYNC_OPTIONS = [
+  { value: 'manual', label: 'Manual only', hint: 'Sync only when you click “Sync now”.' },
+  { value: 'end_of_day', label: 'End of day', hint: 'Automatically syncs once daily, around 11pm IST.' },
+  { value: 'every_12h', label: 'Every 12 hours', hint: 'Automatically syncs twice a day.' },
+];
+
+const formatLastSynced = (iso) => {
+  if (!iso) return 'Never synced yet';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'Never synced yet';
+  return `Last synced ${date.toLocaleString()}`;
+};
 
 const Profile = () => {
-  const { user, loading: saving, handleUpdateLeetcodeUsername } = useAuth();
+  const { user, loading: saving, handleUpdateLeetcodeUsername, handleUpdateSyncPreference } = useAuth();
   const [leetcodeUsername, setLeetcodeUsername] = useState(user?.leetcodeUsername || '');
+  const [showSyncDialog, setShowSyncDialog] = useState(false);
+
+  const syncPreference = user?.syncPreference || 'manual';
+  const hasLeetcodeUsername = Boolean(user?.leetcodeUsername?.trim());
+  const activeHint = SYNC_OPTIONS.find((o) => o.value === syncPreference)?.hint;
 
   // Keep the field in sync when the saved username arrives/changes from a
   // background profile refresh — adjusting state during render instead of in an
@@ -79,10 +105,10 @@ const Profile = () => {
               LeetCode Configuration
             </CardTitle>
             <CardDescription className="pt-1">
-              Save your public LeetCode username here. Syncing is available from the Problems page import flow.
+              Save your public LeetCode username, choose how often to sync, or sync your recent activity now.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-6">
             <form onSubmit={handleSave} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="lc-username">Public Username</Label>
@@ -101,9 +127,48 @@ const Profile = () => {
                 {saving ? 'Saving...' : 'Update Username'}
               </Button>
             </form>
+
+            <div className="border-t border-white/[0.06] pt-6 space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="sync-pref">Auto-sync</Label>
+                <Select value={syncPreference} onValueChange={handleUpdateSyncPreference}>
+                  <SelectTrigger id="sync-pref" className="focus:ring-[#FFA116]/40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SYNC_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {activeHint && <p className="text-xs text-muted-foreground">{activeHint}</p>}
+                {!hasLeetcodeUsername && syncPreference !== 'manual' && (
+                  <p className="text-xs text-amber-400">Set your username above for auto-sync to run.</p>
+                )}
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <span className="text-xs text-muted-foreground">{formatLastSynced(user.lastSyncedAt)}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowSyncDialog(true)}
+                  className="self-start sm:self-auto"
+                >
+                  <RefreshCw className="h-4 w-4 text-[#FFA116]" />
+                  Sync now
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      <ImportProblemsDialog
+        open={showSyncDialog}
+        onOpenChange={setShowSyncDialog}
+        onCancel={() => setShowSyncDialog(false)}
+      />
     </div>
   );
 };

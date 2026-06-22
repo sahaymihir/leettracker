@@ -62,7 +62,7 @@ export const login = async (req, res) => {
     }
 
     const token = generateToken(res, { id: email, username: user.username });
-    res.json({ token, user: { id: email, username: user.username, email: user.email, leetcodeUsername: user.leetcodeUsername } });
+    res.json({ token, user: { id: email, username: user.username, email: user.email, leetcodeUsername: user.leetcodeUsername, syncPreference: user.syncPreference, lastSyncedAt: user.lastSyncedAt } });
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed' });
@@ -95,6 +95,8 @@ export const getMe = async (req, res) => {
       username: user.username,
       email: user.email,
       leetcodeUsername: user.leetcodeUsername,
+      syncPreference: user.syncPreference || 'manual',
+      lastSyncedAt: user.lastSyncedAt,
       created_at: user.createdAt,
     });
   } catch (err) {
@@ -120,5 +122,31 @@ export const updateLeetcodeUsername = async (req, res) => {
   } catch (err) {
     console.error('Update leetcode username error:', err);
     res.status(500).json({ error: 'Failed to update LeetCode username' });
+  }
+};
+
+const SYNC_PREFERENCES = ['manual', 'end_of_day', 'every_12h'];
+
+/**
+ * @name updateSyncPreferenceController
+ * @description Set the user's auto-sync cadence preference
+ * @access Private
+ */
+export const updateSyncPreference = async (req, res) => {
+  try {
+    const { syncPreference } = req.body;
+    if (!SYNC_PREFERENCES.includes(syncPreference)) {
+      return res.status(400).json({ error: 'Invalid sync preference' });
+    }
+
+    const user = await usersRepo.getByEmail(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    await usersRepo.updateSyncPreference(req.userId, syncPreference);
+
+    res.json({ success: true, syncPreference });
+  } catch (err) {
+    console.error('Update sync preference error:', err);
+    res.status(500).json({ error: 'Failed to update sync preference' });
   }
 };

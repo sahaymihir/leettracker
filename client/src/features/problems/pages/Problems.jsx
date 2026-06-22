@@ -1,4 +1,4 @@
-import { Plus, Download } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useProblems } from '@/features/problems/hooks/useProblems';
 import { useAddProblem } from '@/features/problems/hooks/useAddProblem';
 import TopicFilterTabs from '@/shared/components/TopicFilterTabs';
@@ -7,7 +7,6 @@ import ProblemFilters from '@/features/problems/components/ProblemFilters';
 import ProblemList from '@/features/problems/components/ProblemList';
 import AddProblemDialog from '@/shared/components/AddProblemDialog';
 import DeleteProblemDialog from '@/features/problems/components/DeleteProblemDialog';
-import ImportProblemsDialog from '@/features/problems/components/ImportProblemsDialog';
 
 const Problems = () => {
   const problems = useProblems();
@@ -31,10 +30,6 @@ const Problems = () => {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" onClick={() => problems.setShowImportModal(true)}>
-            <Download className="h-4 w-4 text-[#FFA116]" />
-            Import from LeetCode
-          </Button>
           <Button onClick={add.openAddModal}>
             <Plus className="h-4 w-4" />
             Add Problem
@@ -83,13 +78,6 @@ const Problems = () => {
         deleteTarget={problems.deleteTarget}
         onCancel={() => problems.setDeleteTarget(null)}
         onConfirm={problems.handleConfirmDelete}
-      />
-
-      <ImportProblemsDialog
-        open={problems.showImportModal}
-        onOpenChange={problems.setShowImportModal}
-        onSuccess={problems.fetchProblems}
-        onCancel={() => problems.setShowImportModal(false)}
       />
     </div>
   );

@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "seed": "node src/db/seed-dynamodb.js",
-    "package": "zip -r lambda-deploy.zip lambda.js lambda-backup.js package.json package-lock.json node_modules/ src/ .env"
+    "package": "zip -r lambda-deploy.zip lambda.js lambda-backup.js lambda-autosync.js package.json package-lock.json node_modules/ src/ .env"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.700.0",

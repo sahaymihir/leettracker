@@ -27,7 +27,6 @@ export const useProblems = () => {
   const [visibleCount, setVisibleCount] = useState(PROBLEMS_PAGE_SIZE);
 
   // Modal state.
-  const [showImportModal, setShowImportModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const fetchProblems = () => {
@@ -199,8 +198,5 @@ export const useProblems = () => {
     deleteTarget,
     setDeleteTarget,
     handleConfirmDelete,
-    // import modal
-    showImportModal,
-    setShowImportModal,
   };
 };

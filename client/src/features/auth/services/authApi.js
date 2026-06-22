@@ -12,3 +12,6 @@ export const getCurrentUser = () => api.get('/auth/me');
 
 export const updateLeetcodeUsername = (leetcodeUsername) =>
   api.put('/auth/me/leetcode-username', { leetcodeUsername });
+
+export const updateSyncPreference = (syncPreference) =>
+  api.put('/auth/me/sync-preference', { syncPreference });

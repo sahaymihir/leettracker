@@ -1,4 +1,4 @@
-import { getItem, putItem, updateItem } from '../db/dynamodb.js';
+import { getItem, putItem, updateItem, scanItems } from '../db/dynamodb.js';
 import { userKey, usernameIndexKey } from '../models/keys.js';
 import { makeUser, makeUsernameIndex } from '../models/user.js';
 
@@ -31,3 +31,26 @@ export const updateLeetcodeUsername = (email, leetcodeUsername) => {
   }
   return updateItem(PK, SK, 'REMOVE leetcodeUsername');
 };
+
+// Set the auto-sync cadence preference ('manual' | 'end_of_day' | 'every_12h').
+// 'manual' (the default) is stored explicitly so the scheduler can skip it by
+// attribute presence; any falsy value REMOVEs the attribute.
+export const updateSyncPreference = (email, syncPreference) => {
+  const { PK, SK } = userKey(email);
+  if (syncPreference) {
+    return updateItem(PK, SK, 'SET syncPreference = :sp', { ':sp': syncPreference });
+  }
+  return updateItem(PK, SK, 'REMOVE syncPreference');
+};
+
+// Stamp the last successful sync (ISO timestamp). Used by the scheduler to
+// decide whether a cadence-based auto-sync is due.
+export const setLastSyncedAt = (email, isoTimestamp) => {
+  const { PK, SK } = userKey(email);
+  return updateItem(PK, SK, 'SET lastSyncedAt = :ts', { ':ts': isoTimestamp });
+};
+
+// Full scan of primary user rows (SK === 'PROFILE'). Only used by the scheduled
+// auto-sync Lambda — the request path never scans.
+export const listAll = () =>
+  scanItems('SK = :sk', { ':sk': 'PROFILE' });

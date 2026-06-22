@@ -3,6 +3,12 @@ import { AuthContext } from '@/features/auth/state/authContext';
 import * as authApi from '@/features/auth/services/authApi';
 import { toast } from '@/shared/ui/use-toast';
 
+export const SYNC_PREFERENCE_LABELS = {
+  manual: 'Manual only',
+  end_of_day: 'Automatically at end of day',
+  every_12h: 'Automatically every 12 hours',
+};
+
 // The single auth hook: it reads the shared user/session state from context and
 // owns the orchestration (loading, error, toasts) so pages stay presentational.
 // Each handler returns a boolean so the calling page can decide whether to
@@ -70,6 +76,22 @@ export const useAuth = () => {
     }
   };
 
+  const handleUpdateSyncPreference = async (nextPreference) => {
+    // Optimistically update local state, then persist; revert on failure so the
+    // selector never lies about what's saved on the server.
+    const previous = context.user?.syncPreference || 'manual';
+    context.updateUser({ ...context.user, syncPreference: nextPreference });
+    try {
+      const res = await authApi.updateSyncPreference(nextPreference);
+      toast({ title: 'Sync preference saved', description: SYNC_PREFERENCE_LABELS[res.data.syncPreference] || '', variant: 'success' });
+      return true;
+    } catch (err) {
+      context.updateUser({ ...context.user, syncPreference: previous });
+      toast({ title: 'Failed to save preference', description: err.response?.data?.error || '', variant: 'destructive' });
+      return false;
+    }
+  };
+
   return {
     ...context,
     loading,
@@ -78,5 +100,6 @@ export const useAuth = () => {
     handleRegister,
     handleLogout,
     handleUpdateLeetcodeUsername,
+    handleUpdateSyncPreference,
   };
 };
