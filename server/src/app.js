@@ -8,8 +8,7 @@ import problemsRoutes from './routes/problems.js';
 import groupsRoutes from './routes/groups.js';
 import dashboardRoutes from './routes/dashboard.js';
 import leetcodeRoutes from './routes/leetcode.js';
-import { auth } from './middleware/auth.js'
-import { healthCheck, runBackup } from './controllers/systemController.js';
+import { healthCheck } from './controllers/systemController.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -51,13 +50,6 @@ app.use('/api/leetcode', leetcodeRoutes);
  * @access Public
  */
 app.get('/api/health', healthCheck);
-
-/**
- * @route GET /api/backup
- * @description Back up all data to S3 and return it as downloadable JSON
- * @access Private — requires a valid session (the `auth` middleware below)
- */
-app.get('/api/backup', auth, runBackup);
 
 // Error handler
 app.use((err, req, res, next) => {

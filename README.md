@@ -13,15 +13,13 @@ LeetTracker is a full-stack LeetCode tracking app for personal practice and grou
 - LeetCode import and sync from the Profile page using a saved public LeetCode username
 - Configurable auto-sync (manual or end of day) driven by a scheduled Lambda
 - Mobile-friendly and desktop-friendly React SPA
-- Manual and scheduled DynamoDB backups to S3
 
 ## Current Architecture
 
 - Frontend: React single-page app deployed to Vercel
 - Backend API: Express app wrapped for AWS Lambda with `serverless-http`
 - API entrypoint: AWS API Gateway -> Lambda -> Express routes
-- Primary data store: Amazon DynamoDB using a single-table design
-- Backup worker: separate scheduled Lambda that exports data to Amazon S3
+- Primary data store: Amazon DynamoDB using a single-table design (point-in-time recovery enabled for restores)
 - Auto-sync worker: separate daily-scheduled Lambda that syncs users by their saved cadence
 - LeetCode integration: backend requests LeetCode's public GraphQL endpoints
 - Problem metadata source: local JSON dataset plus live LeetCode fallback for sync/import edge cases
@@ -46,10 +44,11 @@ This section reflects the code that is currently in the repository.
 | Authentication | JSON Web Tokens (`jsonwebtoken`), `bcryptjs` | JWT auth and password hashing |
 | Backend middleware/utilities | `cors`, `dotenv`, `uuid` | CORS, env loading, short group IDs |
 | Database | Amazon DynamoDB | Single-table model |
+| Backend testing | Vitest, Supertest, `@vitest/coverage-v8` | Unit + integration suite in [`server/test/`](server/test/); run with `npm test --prefix server` |
 | DynamoDB client layer | AWS SDK v3: `@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb` | Uses `DynamoDBDocumentClient` helpers |
-| Object storage | Amazon S3, AWS SDK v3 `@aws-sdk/client-s3` | Stores JSON backups |
-| Compute | AWS Lambda | One API Lambda, one backup Lambda, and one auto-sync Lambda |
-| Scheduling | Amazon EventBridge | Triggers scheduled backups and daily auto-sync |
+| Backup/restore | DynamoDB point-in-time recovery (PITR) | AWS-managed continuous backups |
+| Compute | AWS Lambda | One API Lambda and one auto-sync Lambda |
+| Scheduling | Amazon EventBridge | Triggers the daily auto-sync |
 | API ingress | Amazon API Gateway | Frontend points to the `/api` base URL |
 | Hosting | Vercel, AWS | Vercel for client, AWS for backend services |
 | External integration | LeetCode GraphQL | Import/sync and metadata fallback |
@@ -105,9 +104,7 @@ leettracker/
 ├── server/
 │   ├── index.js
 │   ├── lambda.js
-│   ├── lambda-backup.js
 │   ├── lambda-autosync.js
-│   ├── backup.js
 │   ├── package.json
 │   ├── middleware/
 │   │   └── auth.js
@@ -141,7 +138,6 @@ Create `server/.env`:
 JWT_SECRET=your-jwt-secret-here
 AWS_REGION=ap-south-1
 DYNAMODB_TABLE=LeetTrackerTable
-S3_BACKUP_BUCKET=leettracker-backups
 
 # Optional when not using an IAM role or configured AWS profile
 # AWS_ACCESS_KEY_ID=your-access-key
@@ -283,7 +279,6 @@ npm run package --prefix server
 ### Operational Endpoints
 
 - `GET /api/health`
-- `GET /api/backup`
 
 ## Data Model Notes
 
@@ -315,15 +310,13 @@ npm run package --prefix server
 ```
 
 - This creates `server/lambda-deploy.zip`
-- That zip is used for all three:
+- That zip is used for both:
   - the main API Lambda
-  - the scheduled backup Lambda
   - the scheduled auto-sync Lambda
 
-### Scheduled backups
+### Backup / restore
 
-- [`server/lambda-backup.js`](server/lambda-backup.js) is the EventBridge-triggered backup worker
-- [`server/backup.js`](server/backup.js) scans DynamoDB and writes JSON snapshots to S3
+- DynamoDB point-in-time recovery (PITR) provides AWS-managed continuous backups; restore to any second in the retention window from the AWS console — no application code involved
 
 ### Scheduled auto-sync
 
@@ -338,13 +331,30 @@ npm run package --prefix server
 
 [`deploy.sh`](deploy.sh) exists to automate packaging and Lambda uploads, but review it before using it in development. It currently runs a hard reset against `origin/main`, so it will discard uncommitted local changes.
 
+## Testing
+
+The backend has a Vitest suite under [`server/test/`](server/test/). Run it from the `server/` directory (or with `--prefix server`):
+
+```bash
+npm test            # run the whole suite once
+npm run test:watch  # re-run on change during development
+npm run test:coverage  # enforce coverage thresholds (see vitest.config.js)
+```
+
+The suite is layered the way a service like this is usually tested:
+
+- **Unit tests** (`test/unit/`) — pure logic and single units in isolation: the key-schema builders and model factories, `generateToken`, the `auth` JWT middleware, `autoSyncRunner` scheduling, the dataset loader, and each controller with its repositories mocked. Repository tests mock the DynamoDB helper layer and assert the exact keys/expressions issued, which is where single-table bugs hide.
+- **Integration tests** (`test/integration/`) — the real Express app + controllers + repositories driven through HTTP with Supertest, against an in-memory stand-in for the DynamoDB layer ([`test/helpers/memoryDb.js`](server/test/helpers/memoryDb.js)). These exercise routing, the `auth` guard, validation, and the register → login → `/me` flow end-to-end.
+
+Only the AWS seam is faked — `src/db/dynamodb.js` is the single mock boundary, so everything above it runs for real. That file and the dev-only `seed`/`wipe` scripts are excluded from coverage because they are only meaningfully exercised against real infrastructure; the thresholds in [`server/vitest.config.js`](server/vitest.config.js) are honest floors over the application code (currently ~68% statements / ~70% lines).
+
 ## Current Frontend And Backend Hosting
 
 Based on the current project setup:
 
 - Frontend is intended to be hosted on Vercel
 - Backend is intended to run on AWS Lambda behind API Gateway
-- Backups are intended to go to S3 on a schedule via EventBridge
+- Backups are handled by DynamoDB point-in-time recovery (PITR)
 - Auto-sync is intended to run daily at end-of-day UTC via EventBridge, syncing users by their saved cadence
 
 ## License

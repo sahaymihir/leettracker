@@ -31,13 +31,6 @@ aws lambda update-function-code \
   --region ap-south-1 \
   --no-cli-pager > /dev/null
 
-echo "☁️ Uploading leettracker-backup to AWS..."
-aws lambda update-function-code \
-  --function-name leettracker-backup \
-  --zip-file fileb://lambda-deploy.zip \
-  --region ap-south-1 \
-  --no-cli-pager > /dev/null
-
 echo "✅ Backend deployed to AWS!"
 cd ..
 echo ""

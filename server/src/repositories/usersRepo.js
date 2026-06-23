@@ -32,7 +32,7 @@ export const updateLeetcodeUsername = (email, leetcodeUsername) => {
   return updateItem(PK, SK, 'REMOVE leetcodeUsername');
 };
 
-// Set the auto-sync cadence preference ('manual' | 'end_of_day' | 'every_12h').
+// Set the auto-sync cadence preference ('manual' | 'end_of_day').
 // 'manual' (the default) is stored explicitly so the scheduler can skip it by
 // attribute presence; any falsy value REMOVEs the attribute.
 export const updateSyncPreference = (email, syncPreference) => {

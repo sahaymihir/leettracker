@@ -34,8 +34,8 @@ export const register = async (req, res) => {
     await usersRepo.create({ email, username, passwordHash, createdAt });
 
     // Sets the HttpOnly session cookie (XSS can't read it) and returns the token.
-    // We still echo the token in the body for non-browser API clients (e.g. the
-    // backup curl); the SPA ignores it and relies on the cookie.
+    // We still echo the token in the body for non-browser API clients (curl,
+    // server-to-server); the SPA ignores it and relies on the cookie.
     const token = generateToken(res, { id: email, username });
     res.json({ token, user: { id: email, username, email } });
   } catch (err) {

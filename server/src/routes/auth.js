@@ -41,7 +41,7 @@ router.put('/me/leetcode-username', auth, updateLeetcodeUsername);
 
 /**
  * @route PUT /api/auth/me/sync-preference
- * @description Set the user's auto-sync cadence ('manual' | 'end_of_day' | 'every_12h')
+ * @description Set the user's auto-sync cadence ('manual' | 'end_of_day')
  * @access Private
  */
 router.put('/me/sync-preference', auth, updateSyncPreference);

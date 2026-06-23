@@ -3,8 +3,8 @@
  * Triggered by Amazon EventBridge (CloudWatch Events) once a day at end-of-day
  * UTC (e.g. cron(0 23 * * ? *)).
  *
- * This is a SEPARATE Lambda function from the API handler (mirrors
- * lambda-backup.js). It runs the batch auto-sync — no Express, no API Gateway.
+ * This is a SEPARATE Lambda function from the API handler. It runs the batch
+ * auto-sync — no Express, no API Gateway.
  *
  * EventBridge owns the timing; the per-user eligibility decision lives in
  * autoSyncRunner (only 'end_of_day' users are synced).
