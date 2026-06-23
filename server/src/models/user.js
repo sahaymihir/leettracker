@@ -9,6 +9,8 @@ import { userKey, usernameIndexKey } from './keys.js';
  * @property {string} passwordHash
  * @property {string} createdAt           ISO timestamp
  * @property {string} [leetcodeUsername]  set later via updateLeetcodeUsername
+ * @property {('manual'|'end_of_day')} [syncPreference]  auto-sync cadence; absent/`manual` = no auto-sync
+ * @property {string} [lastSyncedAt]      ISO timestamp of the last successful sync
  */
 
 /**

@@ -373,6 +373,140 @@ export const importFromLeetCode = async (req, res) => {
 };
 
 /**
+ * @name runSync
+ * @description Core sync routine, decoupled from HTTP. Pulls recent activity from
+ *   a user's public LeetCode profile, updates progress (never-downgrade), adds
+ *   imported problems to the given groups, and stamps lastSyncedAt on success.
+ *   Shared by the POST /sync endpoint and the scheduled auto-sync Lambda.
+ * @param {string} userId  the user's email (=== userId throughout the app)
+ * @param {{ groupIds?: string[] }} [options]
+ * @returns {Promise<Object>} the same result summary the /sync endpoint returns
+ * @throws {Error} with optional `statusCode` (404 missing/private profile,
+ *   400 username not set, 404 user not found) for callers to map to a response
+ */
+export const runSync = async (userId, { groupIds = [] } = {}) => {
+  const user = await usersRepo.getByEmail(userId);
+  if (!user) {
+    const error = new Error('User not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const username = user.leetcodeUsername?.trim();
+  if (!username) {
+    const error = new Error('LeetCode username not set in profile');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const [
+    { totalSolved },
+    recentAcceptedSubmissions,
+    recentSubmissions,
+  ] = await Promise.all([
+    fetchAcceptedProblemData(username),
+    fetchRecentAcceptedSubmissionDates(username),
+    fetchRecentSubmissionActivity(username),
+  ]);
+
+  const recentSolvedMap = new Map();
+  recentAcceptedSubmissions.forEach((submission) => {
+    if (!submission?.titleSlug || recentSolvedMap.has(submission.titleSlug)) {
+      return;
+    }
+
+    recentSolvedMap.set(
+      submission.titleSlug,
+      toIsoTimestamp(submission.timestamp)
+    );
+  });
+
+  const recentAttemptedMap = new Map();
+  recentSubmissions.forEach((submission) => {
+    if (!submission?.titleSlug) {
+      return;
+    }
+
+    if (isAcceptedSubmission(submission) || recentSolvedMap.has(submission.titleSlug)) {
+      return;
+    }
+
+    if (!recentAttemptedMap.has(submission.titleSlug)) {
+      recentAttemptedMap.set(
+        submission.titleSlug,
+        toIsoTimestamp(submission.timestamp)
+      );
+    }
+  });
+
+  const defaultTimestamp = new Date().toISOString();
+  let newlyImported = 0;
+  let attemptedImported = 0;
+  let alreadyTracked = 0;
+  let failed = 0;
+  const importedProblemNumbers = [];
+
+  for (const [slug, timestamp] of recentSolvedMap.entries()) {
+    const problemData = await resolveProblemData(slug);
+    if (problemData) {
+      const num = problemData.number;
+      const ts = timestamp || defaultTimestamp;
+      await ensureProblemExists(problemData, userId);
+      const result = await updateProgress(userId, num, 'solved', ts);
+      if (result === 'solved') {
+        newlyImported++;
+        importedProblemNumbers.push(num);
+      } else {
+        alreadyTracked++;
+      }
+    } else {
+      failed++;
+    }
+  }
+
+  for (const [slug, timestamp] of recentAttemptedMap.entries()) {
+    const problemData = await resolveProblemData(slug);
+    if (problemData) {
+      const num = problemData.number;
+      const ts = timestamp || defaultTimestamp;
+      await ensureProblemExists(problemData, userId);
+      const result = await updateProgress(userId, num, 'attempted', ts);
+      if (result === 'attempted') {
+        attemptedImported++;
+        importedProblemNumbers.push(num);
+      } else {
+        alreadyTracked++;
+      }
+    } else {
+      failed++;
+    }
+  }
+
+  // Add imported problems to selected groups
+  const { groupsUpdated, groupsFailed } = await addProblemsToGroups(
+    userId, importedProblemNumbers, groupIds
+  );
+
+  // Stamp the successful sync so cadence-based auto-sync knows when we last ran.
+  await usersRepo.setLastSyncedAt(userId, new Date().toISOString());
+
+  return {
+    success: true,
+    newlyImported,
+    attemptedImported,
+    alreadyTracked,
+    failed,
+    totalFound: recentSolvedMap.size + recentAttemptedMap.size,
+    totalSolvedOnLeetCode: totalSolved,
+    recentSolvedFound: recentSolvedMap.size,
+    recentAttemptedFound: recentAttemptedMap.size,
+    bestEffortAttempted: true,
+    groupsUpdated,
+    groupsFailed,
+  };
+};
+
+/**
  * @name syncFromLeetCodeController
  * @description Sync recent activity from the user's public LeetCode profile
  * @access Private
@@ -380,123 +514,16 @@ export const importFromLeetCode = async (req, res) => {
 export const syncFromLeetCode = async (req, res) => {
   try {
     const groupIds = Array.isArray(req.body?.groupIds) ? req.body.groupIds : [];
-
-    const user = await usersRepo.getByEmail(req.userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    const username = user.leetcodeUsername?.trim();
-    if (!username) {
-      return res.status(400).json({ error: 'LeetCode username not set in profile' });
-    }
-
-    const [
-      { totalSolved },
-      recentAcceptedSubmissions,
-      recentSubmissions,
-    ] = await Promise.all([
-      fetchAcceptedProblemData(username),
-      fetchRecentAcceptedSubmissionDates(username),
-      fetchRecentSubmissionActivity(username),
-    ]);
-
-    const recentSolvedMap = new Map();
-    recentAcceptedSubmissions.forEach((submission) => {
-      if (!submission?.titleSlug || recentSolvedMap.has(submission.titleSlug)) {
-        return;
-      }
-
-      recentSolvedMap.set(
-        submission.titleSlug,
-        toIsoTimestamp(submission.timestamp)
-      );
-    });
-
-    const recentAttemptedMap = new Map();
-    recentSubmissions.forEach((submission) => {
-      if (!submission?.titleSlug) {
-        return;
-      }
-
-      if (isAcceptedSubmission(submission) || recentSolvedMap.has(submission.titleSlug)) {
-        return;
-      }
-
-      if (!recentAttemptedMap.has(submission.titleSlug)) {
-        recentAttemptedMap.set(
-          submission.titleSlug,
-          toIsoTimestamp(submission.timestamp)
-        );
-      }
-    });
-
-    const defaultTimestamp = new Date().toISOString();
-    let newlyImported = 0;
-    let attemptedImported = 0;
-    let alreadyTracked = 0;
-    let failed = 0;
-    const importedProblemNumbers = [];
-
-    for (const [slug, timestamp] of recentSolvedMap.entries()) {
-      const problemData = await resolveProblemData(slug);
-      if (problemData) {
-        const num = problemData.number;
-        const ts = timestamp || defaultTimestamp;
-        await ensureProblemExists(problemData, req.userId);
-        const result = await updateProgress(req.userId, num, 'solved', ts);
-        if (result === 'solved') {
-          newlyImported++;
-          importedProblemNumbers.push(num);
-        } else {
-          alreadyTracked++;
-        }
-      } else {
-        failed++;
-      }
-    }
-
-    for (const [slug, timestamp] of recentAttemptedMap.entries()) {
-      const problemData = await resolveProblemData(slug);
-      if (problemData) {
-        const num = problemData.number;
-        const ts = timestamp || defaultTimestamp;
-        await ensureProblemExists(problemData, req.userId);
-        const result = await updateProgress(req.userId, num, 'attempted', ts);
-        if (result === 'attempted') {
-          attemptedImported++;
-          importedProblemNumbers.push(num);
-        } else {
-          alreadyTracked++;
-        }
-      } else {
-        failed++;
-      }
-    }
-
-    // Add imported problems to selected groups
-    const { groupsUpdated, groupsFailed } = await addProblemsToGroups(
-      req.userId, importedProblemNumbers, groupIds
-    );
-
-    res.json({
-      success: true,
-      newlyImported,
-      attemptedImported,
-      alreadyTracked,
-      failed,
-      totalFound: recentSolvedMap.size + recentAttemptedMap.size,
-      totalSolvedOnLeetCode: totalSolved,
-      recentSolvedFound: recentSolvedMap.size,
-      recentAttemptedFound: recentAttemptedMap.size,
-      bestEffortAttempted: true,
-      groupsUpdated,
-      groupsFailed,
-    });
+    const result = await runSync(req.userId, { groupIds });
+    res.json(result);
   } catch (error) {
     console.error('LeetCode Sync Error:', error);
     const statusCode = error.statusCode || 500;
     const errorMessage = statusCode === 404
       ? 'Could not find a public LeetCode profile for that username. Check the username and profile privacy.'
-      : 'Failed to sync from LeetCode';
+      : statusCode === 400
+        ? error.message
+        : 'Failed to sync from LeetCode';
     res.status(statusCode).json({ error: errorMessage });
   }
 };

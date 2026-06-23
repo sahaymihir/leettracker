@@ -27,7 +27,7 @@ export const cookieOptions = {
  */
 export const auth = (req, res, next) => {
   // Prefer the HttpOnly cookie; fall back to a Bearer header so existing API
-  // clients (and the manual /api/backup curl in DEPLOY.md) keep working.
+  // clients (curl, server-to-server) keep working.
   const header = req.headers.authorization;
   const token = req.cookies?.[TOKEN_COOKIE]
     || (header?.startsWith('Bearer ') ? header.split(' ')[1] : null);

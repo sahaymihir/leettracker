@@ -1,6 +1,6 @@
 import express from 'express';
 import { auth } from '../middleware/auth.js';
-import { register, login, logout, getMe, updateLeetcodeUsername } from '../controllers/authController.js';
+import { register, login, logout, getMe, updateLeetcodeUsername, updateSyncPreference } from '../controllers/authController.js';
 
 const router = express.Router();
 
@@ -38,5 +38,12 @@ router.get('/me', auth, getMe);
  * @access Private
  */
 router.put('/me/leetcode-username', auth, updateLeetcodeUsername);
+
+/**
+ * @route PUT /api/auth/me/sync-preference
+ * @description Set the user's auto-sync cadence ('manual' | 'end_of_day')
+ * @access Private
+ */
+router.put('/me/sync-preference', auth, updateSyncPreference);
 
 export default router;
