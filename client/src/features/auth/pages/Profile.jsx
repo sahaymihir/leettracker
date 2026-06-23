@@ -16,8 +16,7 @@ import ImportProblemsDialog from '@/features/problems/components/ImportProblemsD
 
 const SYNC_OPTIONS = [
   { value: 'manual', label: 'Manual only', hint: 'Sync only when you click “Sync now”.' },
-  { value: 'end_of_day', label: 'End of day', hint: 'Automatically syncs once daily, around 11pm IST.' },
-  { value: 'every_12h', label: 'Every 12 hours', hint: 'Automatically syncs twice a day.' },
+  { value: 'end_of_day', label: 'End of day', hint: 'Automatically syncs once daily, at end of day (UTC).' },
 ];
 
 const formatLastSynced = (iso) => {

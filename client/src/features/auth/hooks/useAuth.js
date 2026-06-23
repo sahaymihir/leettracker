@@ -6,7 +6,6 @@ import { toast } from '@/shared/ui/use-toast';
 export const SYNC_PREFERENCE_LABELS = {
   manual: 'Manual only',
   end_of_day: 'Automatically at end of day',
-  every_12h: 'Automatically every 12 hours',
 };
 
 // The single auth hook: it reads the shared user/session state from context and

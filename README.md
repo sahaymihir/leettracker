@@ -11,7 +11,7 @@ LeetTracker is a full-stack LeetCode tracking app for personal practice and grou
 - Add-to-group from your own problem set, including multi-select flows
 - Dashboard with activity heatmap, pattern insights, group stats, and recent activity
 - LeetCode import and sync from the Profile page using a saved public LeetCode username
-- Configurable auto-sync (manual, end of day, or every 12 hours) driven by a scheduled Lambda
+- Configurable auto-sync (manual or end of day) driven by a scheduled Lambda
 - Mobile-friendly and desktop-friendly React SPA
 - Manual and scheduled DynamoDB backups to S3
 
@@ -22,7 +22,7 @@ LeetTracker is a full-stack LeetCode tracking app for personal practice and grou
 - API entrypoint: AWS API Gateway -> Lambda -> Express routes
 - Primary data store: Amazon DynamoDB using a single-table design
 - Backup worker: separate scheduled Lambda that exports data to Amazon S3
-- Auto-sync worker: separate hourly-scheduled Lambda that syncs users by their saved cadence
+- Auto-sync worker: separate daily-scheduled Lambda that syncs users by their saved cadence
 - LeetCode integration: backend requests LeetCode's public GraphQL endpoints
 - Problem metadata source: local JSON dataset plus live LeetCode fallback for sync/import edge cases
 
@@ -49,7 +49,7 @@ This section reflects the code that is currently in the repository.
 | DynamoDB client layer | AWS SDK v3: `@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb` | Uses `DynamoDBDocumentClient` helpers |
 | Object storage | Amazon S3, AWS SDK v3 `@aws-sdk/client-s3` | Stores JSON backups |
 | Compute | AWS Lambda | One API Lambda, one backup Lambda, and one auto-sync Lambda |
-| Scheduling | Amazon EventBridge | Triggers scheduled backups and hourly auto-sync |
+| Scheduling | Amazon EventBridge | Triggers scheduled backups and daily auto-sync |
 | API ingress | Amazon API Gateway | Frontend points to the `/api` base URL |
 | Hosting | Vercel, AWS | Vercel for client, AWS for backend services |
 | External integration | LeetCode GraphQL | Import/sync and metadata fallback |
@@ -327,11 +327,11 @@ npm run package --prefix server
 
 ### Scheduled auto-sync
 
-- [`server/lambda-autosync.js`](server/lambda-autosync.js) is the EventBridge-triggered auto-sync worker; schedule it on an **hourly** rule (e.g. `rate(1 hour)`)
+- [`server/lambda-autosync.js`](server/lambda-autosync.js) is the EventBridge-triggered auto-sync worker; schedule it on a **daily** rule at end-of-day UTC (e.g. `cron(0 23 * * ? *)`)
 - [`server/src/services/autoSyncRunner.js`](server/src/services/autoSyncRunner.js) scans users and syncs those whose cadence is due
-- Cadence is stored per user as `syncPreference` (`manual` | `end_of_day` | `every_12h`); `manual` users are skipped
-- `end_of_day` fires once per day around 23:00 IST (override with the `AUTOSYNC_END_OF_DAY_IST_HOUR` env var); `every_12h` fires when ~12h have elapsed since the user's `lastSyncedAt`
-- A single hourly schedule drives both cadences — the per-user due decision lives in code, not in EventBridge
+- Cadence is stored per user as `syncPreference` (`manual` | `end_of_day`); `manual` users are skipped
+- `end_of_day` syncs once per UTC day, driven by the daily schedule; a UTC-day guard makes re-fires/retries idempotent so a user isn't synced twice in a day
+- EventBridge owns the timing; the per-user eligibility decision lives in code, not in EventBridge
 - Auto-sync imports problems but does not add them to groups (group targeting is a client-side, per-device selection); use the Profile page **Sync now** action to sync with group targeting
 
 ### `deploy.sh`
@@ -345,7 +345,7 @@ Based on the current project setup:
 - Frontend is intended to be hosted on Vercel
 - Backend is intended to run on AWS Lambda behind API Gateway
 - Backups are intended to go to S3 on a schedule via EventBridge
-- Auto-sync is intended to run hourly via EventBridge, syncing users by their saved cadence
+- Auto-sync is intended to run daily at end-of-day UTC via EventBridge, syncing users by their saved cadence
 
 ## License
 

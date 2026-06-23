@@ -1,12 +1,13 @@
 /**
  * Scheduled auto-sync Lambda handler.
- * Triggered by Amazon EventBridge (CloudWatch Events) hourly.
+ * Triggered by Amazon EventBridge (CloudWatch Events) once a day at end-of-day
+ * UTC (e.g. cron(0 23 * * ? *)).
  *
  * This is a SEPARATE Lambda function from the API handler (mirrors
  * lambda-backup.js). It runs the batch auto-sync — no Express, no API Gateway.
  *
- * A single hourly schedule drives both supported cadences ('end_of_day' in IST
- * and 'every_12h'); the per-user due decision lives in autoSyncRunner.
+ * EventBridge owns the timing; the per-user eligibility decision lives in
+ * autoSyncRunner (only 'end_of_day' users are synced).
  */
 
 import 'dotenv/config';

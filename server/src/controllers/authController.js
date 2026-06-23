@@ -125,7 +125,7 @@ export const updateLeetcodeUsername = async (req, res) => {
   }
 };
 
-const SYNC_PREFERENCES = ['manual', 'end_of_day', 'every_12h'];
+const SYNC_PREFERENCES = ['manual', 'end_of_day'];
 
 /**
  * @name updateSyncPreferenceController
