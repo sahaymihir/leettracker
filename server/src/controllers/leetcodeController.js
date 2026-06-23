@@ -488,7 +488,8 @@ export const runSync = async (userId, { groupIds = [] } = {}) => {
   );
 
   // Stamp the successful sync so cadence-based auto-sync knows when we last ran.
-  await usersRepo.setLastSyncedAt(userId, new Date().toISOString());
+  const lastSyncedAt = new Date().toISOString();
+  await usersRepo.setLastSyncedAt(userId, lastSyncedAt);
 
   return {
     success: true,
@@ -503,6 +504,7 @@ export const runSync = async (userId, { groupIds = [] } = {}) => {
     bestEffortAttempted: true,
     groupsUpdated,
     groupsFailed,
+    lastSyncedAt,
   };
 };
 

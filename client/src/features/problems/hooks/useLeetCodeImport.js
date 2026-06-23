@@ -140,7 +140,14 @@ export const useLeetCodeImport = ({ onSuccess, onCancel } = {}) => {
         bestEffortAttempted = false,
         groupsUpdated = 0,
         groupsFailed = 0,
+        lastSyncedAt,
       } = resp.data;
+
+      // Reflect the server's sync timestamp locally so the Profile shows
+      // "Last synced ..." immediately, without waiting for a /me refresh.
+      if (lastSyncedAt) {
+        updateUser({ ...user, leetcodeUsername: normalizedUsername, lastSyncedAt });
+      }
 
       setResult({
         mode: 'recent-sync',
